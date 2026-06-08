@@ -80,11 +80,15 @@ Phi-4 (HF, BF16) ─┤                    ├─→ [1] 구조적 Pruning ─�
 
 - **Teacher = 원본 Phi-4 (BF16) 고정**, **Student** = 프루닝본. (teacher 교체 불가 사유는 §6 카드 참조)
 - **Loss**: logit KL divergence + (옵션) hidden-state/중간블록 distillation. (Minitron: embedding + logit + 중간블록 loss)
-- **데이터 = 범용 한국어** (에이전트 용도이므로 텍스트 유창성 + instruction-following 둘 다 보존). 2층 구성:
-  - ① **범용 한국어 텍스트**: **CulturaX(ko)** (주) + 한국어 위키(kowiki) (보강). [옵션 FineWeb-2 ko]
-  - ② **한국어 instruction/agent**: **KULLM-v2** + **KoAlpaca-RealQA**(native). [옵션 KOR-OpenOrca로 추론 보강]
-  - 입력 시퀀스(①텍스트 + ②instruction 프롬프트)에 대해 teacher=Phi-4의 logit을 student가 따라감 → Phi-4의 한국어 처리 방식 보존.
-  - 믹스 비율 초기값 ~70%(텍스트)/30%(instruction), config로 튜닝.
+- **데이터 = 범용 한국어** (에이전트 용도이므로 instruction-following + 지식·추론 보존). **확정 믹스**:
+  - **MarkrAI/KoCommercial-Dataset** (주, MIT) — 다양한 한국어 instruction(요약·QA·추론 등) 백본.
+  - **beomi/KoAlpaca-RealQA** — native 실사용 지시-응답(에이전트 자연스러움).
+  - **beomi/kowikitext-qa-ref-detail-preview** (CC-BY-SA-3.0, gated) — wiki 기반 QA + reasoning chain(지식 grounding·추론).
+  - → 세 데이터셋 합칠 때 **dedup 1회** (KoCommercial이 KoAlpaca-v1.1a·WIKI_QA·KorQuad v1을 이미 포함하므로 중복 제거).
+  - 입력 시퀀스에 대해 teacher=Phi-4의 logit을 student가 따라감 → Phi-4의 한국어 처리 방식 보존.
+  - 믹스 비율은 config로 튜닝.
+  - **제외**: KorQuAD 2.0(라이선스 CC BY-ND 리스크 + 초장문 compute 부담), KLUE(평가용 벤치마크라 학습 부적합).
+  - **옵션(유창성 보강)**: CulturaX(ko)/kowiki raw 텍스트 — 1차 시연엔 불요, 깊은 회복 시 추가.
 - **학습 규모**: "충분한 GPU" 전제. full fine-tune 기본, LoRA는 예산 옵션. 토큰 예산은 config화하여 작게 시작 후 확장.
 
 > **한국어 천장 주의**: teacher가 영어 중심 Phi-4라 student의 한국어 능력 상한 = Phi-4 수준. 한국어 데이터는 그 능력을 *보존*하는 용도이지 *향상*시키지 못함. (향상하려면 §6의 sequence-level KD 카드 참조)
