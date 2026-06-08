@@ -150,7 +150,6 @@ prune→distill 계열 최신 기법을 비교한 결과, **Minitron이 본 프�
 | 기법 | 특징 | 판정 |
 |---|---|---|
 | **Minitron** (NVIDIA) | 활성값 기반 구조적 width+depth + KD distillation. 논문 비교에서 LLM-Pruner·SliceGPT·LaCo·ShortGPT·Sheared-LLaMA를 모두 능가 | ✅ **채택** — prune→distill과 정확히 일치, 구현·이해 용이, ~14B급 양산 검증 |
-| DarwinLM (2025.2) | 진화 탐색 기반 구조적 프루닝. Sheared-LLaMA 대비 회복 데이터 5배 절감, Qwen-2.5-14B 검증, 공개 코드 | △ **향후 카드** — Minitron과 직교적(프루닝 단계만 고도화), 탐색 비용↑ |
 | SliceGPT / FLAP / FASP / SlimLLM | 재학습 불필요 구조적 프루닝 | ✗ 우리는 GPU 보유 + distillation 예정이라 "무재학습" 강점이 안 살아남 |
 | Wanda | 비구조적(또는 2:4) 프루닝 | ✗ **제외** (아래) |
 
@@ -163,8 +162,7 @@ prune→distill 계열 최신 기법을 비교한 결과, **Minitron이 본 프�
 
 ### 향후 개선 카드 (spec 기록만, 1차 범위 외)
 
-1. **DarwinLM** — 프루닝 단계를 진화 탐색식으로 교체하여 정확도/회복효율 비교.
-2. **TensorRT-LLM + Wanda(2:4)** — 다른 배포 런타임으로의 비교 실험. 2:4는 50% 고정 sparsity라 structured(Minitron)를 대체하지 않고 추가 옵션.
+1. **TensorRT-LLM + Wanda(2:4)** — 다른 배포 런타임으로의 비교 실험. 2:4는 50% 고정 sparsity라 structured(Minitron)를 대체하지 않고 추가 옵션.
 
 ---
 
@@ -183,6 +181,5 @@ prune→distill 계열 최신 기법을 비교한 결과, **Minitron이 본 프�
 
 - Minitron 논문: https://arxiv.org/html/2408.11796v1
 - Minitron 실전 블로그(Llama-3.1-8B→4B): https://developer.nvidia.com/blog/how-to-prune-and-distill-llama-3-1-8b-to-an-nvidia-llama-3-1-minitron-4b-model/
-- DarwinLM: https://arxiv.org/abs/2502.07780 · 코드 https://github.com/IST-DASLab/DarwinLM
 - SliceGPT: https://arxiv.org/pdf/2401.15024
 - Wanda: https://arxiv.org/abs/2306.11695
