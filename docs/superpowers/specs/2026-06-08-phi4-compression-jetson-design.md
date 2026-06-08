@@ -70,8 +70,9 @@ Phi-4 (HF, BF16) ─┤                    ├─→ [1] 구조적 Pruning ─�
   - **GQA 존중** — Phi-4의 grouped-query attention 때문에 KV head는 쿼리 그룹 단위로 프루닝.
 - **목표 압축률(초기값, 튜닝 대상)**: 14.7B → ~9~10B (약 30~35% 감축). 8GB 예산에 맞춰 조정.
 
-> **첫 구현(PR2)은 LLM-Pruner식 width 프루닝(Taylor 중요도 + dependency-graph 그룹핑)으로 시작**해도 무방.
-> 자체완결적이고 이해가 쉬워 "구현 시작" 산출물로 적합하며, 이후 Minitron식 width+depth+distillation으로 통합한다.
+> **첫 구현(PR2)은 Minitron식 활성값 기반 width 프루닝**으로 시작한다.
+> 즉 보정셋 forward로 뉴런/head 중요도를 산출해 width를 우선 줄이고(결합구조 그룹핑·GQA 존중),
+> 이후 depth 프루닝과 distillation 회복을 더해 Minitron 풀 파이프라인으로 확장한다. (단일 기법으로 일관 유지)
 
 ### [2] Distillation — 회복 학습
 
