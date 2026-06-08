@@ -14,6 +14,8 @@ Phi-4(14.7B)를 **구조적 프루닝 → distillation 회복 → GGUF 양자화
 이번 단계의 **성공 기준**: *동작하는 시작 코드 + GitHub PR 공유*.
 (전체 정확도 회복·E2E 완성은 후속 단계. 1차는 "경량화 코드 구현의 시작"을 보여주는 것이 목적.)
 
+**배포 타겟**: **범용 한국어** (Jetson Orin Nano에서 **에이전트**로 활용). → distillation은 한국어 데이터, 평가는 한국어 벤치(KMMLU)로 진행.
+
 ### 비교 대상 모델
 
 | 모델 | 역할 |
@@ -76,10 +78,16 @@ Phi-4 (HF, BF16) ─┤                    ├─→ [1] 구조적 Pruning ─�
 
 ### [2] Distillation — 회복 학습
 
-- **Teacher** = 원본 Phi-4 (BF16), **Student** = 프루닝본.
+- **Teacher = 원본 Phi-4 (BF16) 고정**, **Student** = 프루닝본. (teacher 교체 불가 사유는 §6 카드 참조)
 - **Loss**: logit KL divergence + (옵션) hidden-state/중간블록 distillation. (Minitron: embedding + logit + 중간블록 loss)
-- **데이터**: 범용 instruction/text 믹스 (범용 능력 유지 목적). 구체 데이터셋은 config로 지정.
+- **데이터 = 범용 한국어** (에이전트 용도이므로 텍스트 유창성 + instruction-following 둘 다 보존). 2층 구성:
+  - ① **범용 한국어 텍스트**: **CulturaX(ko)** (주) + 한국어 위키(kowiki) (보강). [옵션 FineWeb-2 ko]
+  - ② **한국어 instruction/agent**: **KULLM-v2** + **KoAlpaca-RealQA**(native). [옵션 KOR-OpenOrca로 추론 보강]
+  - 입력 시퀀스(①텍스트 + ②instruction 프롬프트)에 대해 teacher=Phi-4의 logit을 student가 따라감 → Phi-4의 한국어 처리 방식 보존.
+  - 믹스 비율 초기값 ~70%(텍스트)/30%(instruction), config로 튜닝.
 - **학습 규모**: "충분한 GPU" 전제. full fine-tune 기본, LoRA는 예산 옵션. 토큰 예산은 config화하여 작게 시작 후 확장.
+
+> **한국어 천장 주의**: teacher가 영어 중심 Phi-4라 student의 한국어 능력 상한 = Phi-4 수준. 한국어 데이터는 그 능력을 *보존*하는 용도이지 *향상*시키지 못함. (향상하려면 §6의 sequence-level KD 카드 참조)
 
 ### [3] Quantization — GGUF (llama.cpp)
 
@@ -100,13 +108,15 @@ Phi-4 (HF, BF16) ─┤                    ├─→ [1] 구조적 Pruning ─�
 
 - **배포 런타임**: **llama.cpp (GGUF)** — Orin Nano 8GB에서 가장 실용적이며, 서브-4비트(IQ3/IQ2) 유연성이 핵심.
 - **평가 서빙**: **vLLM** — 학습 서버에서 양자화 안 된 FP16 큰 모델(원본 Phi-4, Phi-4-mini, 프루닝본)을 고처리량으로 서빙하여 평가 가속.
-- **평가 도구**: lm-eval-harness (perplexity·MMLU·GSM8K 등).
+- **평가 도구**: lm-eval-harness (한국어 태스크).
 
 ### 평가 지표
 
-- **품질**: perplexity(wikitext) + lm-eval-harness 일부(MMLU/GSM8K/HellaSwag)
-- **Jetson 실측**: 메모리 풋프린트, tokens/sec, 로드 성공 여부
-- 5개 모델(원본 / mini / pruned / distilled / quantized) 한 표로 비교
+- **품질(주 지표) = KMMLU** (HAERAE-HUB, 한국어 MMLU·native) — 범용 한국어 지식/이해 측정.
+- **보조**: 한국어 perplexity (CulturaX-ko / kowiki held-out).
+- (향후 옵션) 에이전트 생성 품질 평가 — KMMLU는 객관식이라 생성 품질은 직접 측정 못 함.
+- **Jetson 실측**: 메모리 풋프린트, tokens/sec, 로드 성공 여부.
+- 5개 모델(원본 / mini / pruned / distilled / quantized)을 KMMLU·perplexity·Jetson 실측 한 표로 비교.
 
 ---
 
@@ -161,9 +171,19 @@ prune→distill 계열 최신 기법을 비교한 결과, **Minitron이 본 프�
 - 즉 우리의 배포 경로(Jetson/llama.cpp)에서 Wanda는 메모리를 줄이지 못하므로 배포 후보로서 무의미.
 - 단, **TensorRT-LLM + 2:4 sparsity** 경로에서는 Orin Nano의 Ampere 텐서코어가 2:4를 HW 가속하므로 의미가 생김 → 아래 "향후 카드"로만 기록.
 
+### Teacher 모델 = Phi-4 고정 (Qwen 등 교체 불가 사유)
+
+distillation teacher는 **반드시 원본 Phi-4**여야 하며, Qwen 등 다른 계열로 교체할 수 없다.
+
+1. **Vocab/tokenizer 불일치** — Minitron의 distillation은 logit/hidden state matching이라 teacher·student가 **같은 tokenizer·vocabulary**를 써야 한다. Phi-4(tiktoken 계열, vocab ~100K)와 Qwen2.5(자체 BPE, vocab ~151K)는 logit 차원·토큰 매핑이 달라 KL divergence 계산 자체가 불가능.
+2. **복원 논리** — 회복학습은 "프루닝으로 망가진 Phi-4를 *원본 자기 자신*으로 되돌리는" 과정. student가 Phi-4를 잘라 만든 것이므로 teacher는 정의상 원본 Phi-4.
+
+→ 한국어 능력을 *주입*하려면(천장 상향) logit KD가 아닌 **sequence-level KD**(teacher 생성 한국어 텍스트로 SFT)가 필요한데, 이는 tokenizer 무관하나 "Phi-4 복원"이 아닌 "새 능력 이식"이라 프로젝트 scope가 바뀜 → 아래 향후 카드.
+
 ### 향후 개선 카드 (spec 기록만, 1차 범위 외)
 
 1. **TensorRT-LLM + Wanda(2:4)** — 다른 배포 런타임으로의 비교 실험. 2:4는 50% 고정 sparsity라 structured(Minitron)를 대체하지 않고 추가 옵션.
+2. **sequence-level KD로 한국어 능력 주입** — Qwen/EXAONE 등 한국어 강한 모델이 생성한 한국어 텍스트로 student를 SFT. tokenizer 무관하게 가능하나 "Phi-4 경량화 + 타 모델 한국어 이식"으로 성격이 바뀌고 작업량 증가.
 
 ---
 
@@ -184,3 +204,10 @@ prune→distill 계열 최신 기법을 비교한 결과, **Minitron이 본 프�
 - Minitron 실전 블로그(Llama-3.1-8B→4B): https://developer.nvidia.com/blog/how-to-prune-and-distill-llama-3-1-8b-to-an-nvidia-llama-3-1-minitron-4b-model/
 - SliceGPT: https://arxiv.org/pdf/2401.15024
 - Wanda: https://arxiv.org/abs/2306.11695
+
+### 한국어 데이터 & 평가
+- CulturaX (다국어, ko subset): https://huggingface.co/datasets/uonlp/CulturaX
+- KULLM (고려대): https://github.com/nlpai-lab/KULLM · KoAlpaca: https://github.com/Beomi/KoAlpaca
+- 한국어 데이터셋 모음: https://github.com/gyunggyung/LLM-Ko-Datasets · KIT-19: https://arxiv.org/pdf/2403.16444
+- KMMLU / 한국어 벤치 평가 코드: https://github.com/daekeun-ml/evaluate-llm-on-korean-dataset
+- Open Ko-LLM Leaderboard2: https://arxiv.org/abs/2410.12445
