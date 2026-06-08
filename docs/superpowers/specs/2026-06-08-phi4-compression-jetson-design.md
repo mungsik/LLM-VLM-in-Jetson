@@ -88,7 +88,7 @@ Phi-4 (HF, BF16) ─┤                    ├─→ [1] 구조적 Pruning ─�
   - 입력 시퀀스에 대해 teacher=Phi-4의 logit을 student가 따라감 → Phi-4의 한국어 처리 방식 보존.
   - 믹스 비율은 config로 튜닝.
   - **제외**: KorQuAD 2.0(라이선스 CC BY-ND 리스크 + 초장문 compute 부담), KLUE(평가용 벤치마크라 학습 부적합).
-  - **옵션(유창성 보강)**: CulturaX(ko)/kowiki raw 텍스트 — 1차 시연엔 불요, 깊은 회복 시 추가.
+  - **옵션(유창성 보강)**: kowiki raw 텍스트 — 1차 시연엔 불요, 깊은 회복 시 추가.
 - **학습 규모**: "충분한 GPU" 전제. full fine-tune 기본, LoRA는 예산 옵션. 토큰 예산은 config화하여 작게 시작 후 확장.
 
 > **한국어 천장 주의**: teacher가 영어 중심 Phi-4라 student의 한국어 능력 상한 = Phi-4 수준. 한국어 데이터는 그 능력을 *보존*하는 용도이지 *향상*시키지 못함. (향상하려면 §6의 sequence-level KD 카드 참조)
@@ -117,7 +117,7 @@ Phi-4 (HF, BF16) ─┤                    ├─→ [1] 구조적 Pruning ─�
 ### 평가 지표
 
 - **품질(주 지표) = KMMLU** (HAERAE-HUB, 한국어 MMLU·native) — 범용 한국어 지식/이해 측정.
-- **보조**: 한국어 perplexity (CulturaX-ko / kowiki held-out).
+- **보조**: 한국어 perplexity (kowiki held-out).
 - (향후 옵션) 에이전트 생성 품질 평가 — KMMLU는 객관식이라 생성 품질은 직접 측정 못 함.
 - **Jetson 실측**: 메모리 풋프린트, tokens/sec, 로드 성공 여부.
 - 5개 모델(원본 / mini / pruned / distilled / quantized)을 KMMLU·perplexity·Jetson 실측 한 표로 비교.
@@ -210,7 +210,8 @@ distillation teacher는 **반드시 원본 Phi-4**여야 하며, Qwen 등 다른
 - Wanda: https://arxiv.org/abs/2306.11695
 
 ### 한국어 데이터 & 평가
-- CulturaX (다국어, ko subset): https://huggingface.co/datasets/uonlp/CulturaX
+- KoCommercial-Dataset: https://huggingface.co/datasets/MarkrAI/KoCommercial-Dataset
+- KoAlpaca-RealQA: https://huggingface.co/datasets/beomi/KoAlpaca-RealQA · kowikitext-qa: https://huggingface.co/datasets/beomi/kowikitext-qa-ref-detail-preview
 - KULLM (고려대): https://github.com/nlpai-lab/KULLM · KoAlpaca: https://github.com/Beomi/KoAlpaca
 - 한국어 데이터셋 모음: https://github.com/gyunggyung/LLM-Ko-Datasets · KIT-19: https://arxiv.org/pdf/2403.16444
 - KMMLU / 한국어 벤치 평가 코드: https://github.com/daekeun-ml/evaluate-llm-on-korean-dataset
