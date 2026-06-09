@@ -1,0 +1,8 @@
+torch>=2.2
+transformers>=4.45
+datasets>=2.19
+accelerate>=0.30
+torch-pruning>=1.4.1
+lm-eval>=0.4.3
+pyyaml>=6.0
+pytest>=8.0

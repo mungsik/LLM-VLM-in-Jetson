@@ -1,0 +1,16 @@
+model:
+  name: microsoft/phi-4
+  dtype: bfloat16
+prune:
+  width_ratio: 0.30          # 14.7B -> ~10B 목표(30~35% 감축)
+  importance: activation     # activation | magnitude
+calibration:
+  datasets:
+    - MarkrAI/KoCommercial-Dataset
+    - beomi/KoAlpaca-RealQA
+    - beomi/kowikitext-qa-ref-detail-preview
+  seq_len: 1024
+  n_samples: 256
+  seed: 42
+output:
+  dir: artifacts/phi4-pruned
