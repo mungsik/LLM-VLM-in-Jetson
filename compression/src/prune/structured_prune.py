@@ -20,6 +20,7 @@ from src.common.param_stats import count_parameters
 
 def _slice_linear(linear: nn.Linear, idx: torch.Tensor, dim: int) -> nn.Linear:
     """linear의 weight(+bias)를 dim(0=출력채널, 1=입력채널)에서 idx만 남긴 새 Linear."""
+    idx = idx.to(linear.weight.device)  # 중요도가 GPU, 가중치가 CPU여도 일관되게
     w = linear.weight.data.index_select(dim, idx)
     out_f, in_f = (idx.numel(), linear.in_features) if dim == 0 else (linear.out_features, idx.numel())
     new = nn.Linear(in_f, out_f, bias=linear.bias is not None, device=w.device, dtype=w.dtype)
@@ -108,6 +109,12 @@ def prune_width(
     importance_scores: {module: per-output-channel 중요도}. 없으면 weight magnitude 폴백.
     """
     params_before = count_parameters(model)
+
+    # 슬라이싱은 GPU 연산이 불필요한 텐서 인덱싱이고, 대형 모델(14B)은 GPU 메모리에
+    # 빠듯해 OOM이 난다 → CPU에서 수행(인스턴스 RAM은 넉넉). 중요도 수집은 이미 끝남.
+    model.to("cpu")
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
     for layer in model.model.layers:
         _prune_mlp(layer.mlp, ratio, importance_scores)
