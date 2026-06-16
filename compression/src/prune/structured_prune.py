@@ -71,9 +71,14 @@ def _prune_fused_mlp(mlp: nn.Module, ratio: float, scores: dict | None) -> int:
     inter = mlp.down_proj.in_features
     w = mlp.gate_up_proj.weight.data.float()
     s = scores.get(mlp.gate_up_proj) if scores else None
-    if s is not None and s.shape[0] == inter:
+    if s is not None and s.shape[0] == 2 * inter:
+        # gate_up_proj 출력은 [gate(inter) | up(inter)] → 같은 뉴런 i의 gate·up
+        # 활성값 점수(i, i+inter)를 합산해 intermediate 뉴런 중요도로 (활성값 기반)
+        s = s.float()
+        imp = s[:inter] + s[inter:]
+    elif s is not None and s.shape[0] == inter:
         imp = s.float()
-    else:  # 폴백: gate 구간 + up 구간 행 L2 norm
+    else:  # 폴백: gate 구간 + up 구간 weight 행 L2 norm
         imp = w[:inter].norm(dim=1) + w[inter:].norm(dim=1)
 
     keep = _keep_indices(imp, ratio)
