@@ -41,8 +41,28 @@ cd compression && python3.11 -m venv .venv
 - **Task 7 = 수동 텐서 슬라이싱(structured)**. torch-pruning auto-trace는 transformers 5.x에서 폭주(무한루프)해서 **안 씀**. MLP intermediate를 활성값 중요도 순으로 직접 슬라이싱(차원 실제 축소 → GGUF 메모리 직결). Llama(분리 gate/up)·Phi-3/4(fused gate_up_proj) 둘 다 지원. head/depth 프루닝은 향후 확장.
 - 설치 버전: torch 2.12 / transformers 5.10.2 / torch-pruning 1.6.x / lm-eval 0.4.12 / datasets 5.0.0.
 
-## 다음 할 일
-1. **GPU 서버에서 실제 Phi-4 프루닝**: `.venv/bin/python scripts/run_prune.py --config configs/prune_phi4.yaml` (integration). 한국어 보정셋(KoCommercial/KoAlpaca-RealQA/kowikitext-qa) 다운로드 + CUDA 필요.
-2. 다음 PR: **distillation**(teacher=Phi-4, 한국어 데이터) → **GGUF 양자화**(imatrix, Q4→IQ3/IQ2) → Jetson 벤치.
-3. (선택) 브랜치명 정리: `recovery-task0-6` → `feature/phi4-compression` 통합.
-4. (housekeeping) 숨김 폴더 `Pseudo-Lab/.old-corrupt-trash.nosync`(옛 깨진 저장소) Finder로 휴지통 삭제.
+## 진행 현황 (2026-06-17) — 프루닝 방법 비교 완료
+
+**실제 Phi-4 프루닝을 GCP GPU에서 돌려 KMMLU 비교까지 완료.** 상세: `docs/results/2026-06-17-pruning-kmmlu.md`
+- 추가 코드(전부 push됨): `prune/depth_prune.py`(ShortGPT), `scripts/run_depth_prune.py`, `scripts/eval_compare.py`, `eval_kmmlu` batch_size, fused gate_up_proj 활성값 수정, CPU 슬라이싱(OOM 수정). 단위테스트 **15 passed**.
+- KMMLU(limit=20): 원본 34.1% / **depth-ShortGPT 31.9%(최고)** / width-활성값 18.3% / width-magnitude 7.3%.
+- **SliceGPT 미완**: 공식 lib로 Phi-4 로딩까지 성공(phi3_adapter 패치 필요)했으나 슬라이싱 단계서 조용히 크래시 → 내일 디버깅.
+
+### GCP 인스턴스 (현재 둘 다 STOPPED)
+- **`phi4-blackwell`** (asia-east1-a, g4-standard-48, **RTX PRO 6000 96GB**) ← 메인. 재시작: `gcloud compute instances start phi4-blackwell --zone=asia-east1-a`. SSH: `gcloud compute ssh phi4-blackwell --zone=asia-east1-a --tunnel-through-iap` (포트22 막히면 IAP 필수).
+  - 재시작 후 **NVIDIA 드라이버 모듈 재설치 필요**(커널 업뎃 시): `sudo apt-get install -y linux-modules-nvidia-580-server-open-$(uname -r) && sudo modprobe nvidia`.
+  - 레포: `~/LLM-VLM-in-Jetson`(메인 venv `compression/.venv`) / `~/TransformerCompression`(SliceGPT, `.venv-slice`, transformers 4.41+torch cu130).
+  - 산출물: `~/LLM-VLM-in-Jetson/compression/artifacts/{phi4-pruned-act,phi4-pruned-smoke,phi4-pruned-depth}` (정지해도 디스크 보존, 삭제하면 소실 → 필요시 GCS).
+- `niceinfo-poc-seoul`(Seoul, A100×2 40GB) — 안 씀, STOPPED.
+- ⚠️ 작업 끝나면 **반드시 instance stop** (g4 ~$3-4/hr).
+
+### SliceGPT 재개 메모
+- `~/TransformerCompression/src/slicegpt/adapters/phi3_adapter.py` line 240,260: `"microsoft/phi-4"` 허용 패치 적용됨(이 패치 안 하면 Phi-4 인식 못함).
+- 크래시: 슬라이싱(PCA 회전) 단계서 에러·OOM 없이 죽음. 디버깅: (a) Phi-3-mini로 동작 확인 (b) `--device cpu`로 회전만 (c) torch eigh 등 격리.
+
+## 남은 로드맵
+1. SliceGPT 크래시 해결 (또는 Phi-3-mini 데이터포인트)
+2. **distillation**(teacher=Phi-4, 한국어) — width 하락 회복 (depth는 거의 불필요)
+3. **GGUF 양자화**(imatrix, Q4→IQ3/IQ2) → Jetson Orin Nano 8GB 벤치
+4. (선택) 브랜치명 `recovery-task0-6` → `feature/phi4-compression` 통합
+5. (housekeeping) `Pseudo-Lab/.old-corrupt-trash.nosync` 삭제 — 이미 삭제 확인됨
