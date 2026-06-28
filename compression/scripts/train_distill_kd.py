@@ -70,6 +70,7 @@ def main() -> None:
         logging_steps=10,
         save_steps=500,
         save_total_limit=2,
+        save_only_model=True,   # 8bit paged optimizer state는 torch.save가 깨짐 → 모델만 저장
         report_to=[],
         remove_unused_columns=False,
         gradient_checkpointing=True,
