@@ -38,6 +38,7 @@ def main() -> None:
     manifest = (out_dir / "manifest.jsonl").open("w", encoding="utf-8")
 
     done = 0
+    skipped = 0
     with open(args.responses, encoding="utf-8") as f:
         for i, line in enumerate(f):
             if args.limit is not None and i >= args.limit:
@@ -49,6 +50,8 @@ def main() -> None:
             input_ids = torch.tensor(lab["input_ids"], dtype=torch.long)
             pos = [p for p in lab["pos"] if p - 1 >= 0]
             if not pos:
+                # prefix 정렬 실패(prefix_ok=False) 또는 빈 assistant 구간 → skip
+                skipped += 1
                 continue
             with torch.inference_mode():
                 logits = model(input_ids.unsqueeze(0).to(model.device)).logits[0]  # [L, V]
@@ -73,7 +76,7 @@ def main() -> None:
                 manifest.flush()
                 print(f"precomputed {done}", flush=True)
     manifest.close()
-    print(f"done rows={done} -> {out_dir}")
+    print(f"done rows={done} skipped={skipped} -> {out_dir}")
 
 
 if __name__ == "__main__":

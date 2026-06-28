@@ -19,6 +19,9 @@ def build_assistant_labels(tokenizer, messages, max_length: int = 2048) -> dict:
     full = _render_ids(tokenizer, messages, add_generation_prompt=False)
     prefix = _render_ids(tokenizer, messages[:-1], add_generation_prompt=True)
     full = full[:max_length]
+    # 정렬 가드: prefix가 full의 실제 토큰 접두부가 아니면 pos 신뢰 불가 → 빈 pos로 skip 유도.
+    if full[: len(prefix)] != prefix:
+        return {"input_ids": full, "pos": [], "prefix_ok": False}
     start = min(len(prefix), len(full))
     pos = [j for j in range(start, len(full)) if j >= 1]
-    return {"input_ids": full, "pos": pos}
+    return {"input_ids": full, "pos": pos, "prefix_ok": True}

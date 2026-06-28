@@ -21,11 +21,14 @@ def kd_topk_loss(
     idx = pred_pos.unsqueeze(-1).expand(B, P, V)            # [B, P, V]
     pred_logits = student_logits.gather(1, idx)            # [B, P, V]
 
-    # --- KD: top-k 위에서 KL ---
-    t_prob = F.softmax(topk_logit / temperature, dim=-1)    # [B, P, k] (top-k 정규화)
-    s_logprob_full = F.log_softmax(pred_logits / temperature, dim=-1)  # [B, P, V]
-    s_logprob_topk = s_logprob_full.gather(2, topk_idx)     # [B, P, k]
-    kl = (t_prob * (torch.log(t_prob + 1e-9) - s_logprob_topk)).sum(-1)  # [B, P]
+    # --- KD: top-k k-simplex 위에서 conditional KL ---
+    # teacher·student 모두 같은 top-k 인덱스 위에서 정규화 → 깨끗한 KL(q_topk ‖ p_topk).
+    # (student을 full-vocab log_softmax 후 gather 하면 "top-k에 전체 질량 몰기" 항이 섞여 과over-sharpening.)
+    t_logprob = F.log_softmax(topk_logit / temperature, dim=-1)         # [B, P, k]
+    t_prob = t_logprob.exp()                                            # [B, P, k]
+    s_logits_topk = pred_logits.gather(2, topk_idx)                     # [B, P, k]
+    s_logprob_topk = F.log_softmax(s_logits_topk / temperature, dim=-1) # [B, P, k] (k 위에서 정규화)
+    kl = (t_prob * (t_logprob - s_logprob_topk)).sum(-1)               # [B, P]
     mask = pos_mask.float()
     denom = mask.sum().clamp(min=1.0)
     loss_kd = (temperature ** 2) * (kl * mask).sum() / denom
