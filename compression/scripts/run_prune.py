@@ -54,7 +54,7 @@ def main():
     model, info = prune_width(
         model,
         example_inputs=batch[:1],
-        ratio=cfg["prune"]["width_ratio"],
+        ratio=cfg["prune"].get("ratio", cfg["prune"].get("width_ratio")),
         importance_scores=scores_by_module,
     )
 

@@ -39,12 +39,16 @@ def main():
         n_samples=cfg["calibration"]["n_samples"],
         seed=cfg["calibration"]["seed"],
     )
-    batch = tokenize_texts(texts, tok, seq_len=cfg["calibration"]["seq_len"]).to("cuda")
+    input_ids, attn = tokenize_texts(
+        texts, tok, seq_len=cfg["calibration"]["seq_len"], return_mask=True
+    )
+    batch = {"input_ids": input_ids.to("cuda"), "attention_mask": attn.to("cuda")}
 
     bi = compute_block_influence(model, [batch])
     print("Block Influence per layer:", [round(x, 4) for x in bi.tolist()], flush=True)
 
-    model, info = prune_depth(model, ratio=cfg["prune"]["width_ratio"], bi_scores=bi)
+    ratio = cfg["prune"].get("ratio", cfg["prune"].get("width_ratio"))  # 신키 ratio, 구키 width_ratio 폴백
+    model, info = prune_depth(model, ratio=ratio, bi_scores=bi)
     print("Layers kept:", info["layers_kept"], flush=True)
 
     out_dir = args.out or cfg["output"]["dir"]
