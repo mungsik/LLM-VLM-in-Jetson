@@ -47,6 +47,7 @@ BI_i = 1 - mean_cosine(레이어 입력 hidden, 레이어 출력 hidden)
 - 따라서 calibration 데이터로 forward를 돌려야 레이어별 활성값을 얻고, 그걸로 `BI`를 구합니다.
 - calibration data는 사용할 메인 언어로 지정하면 됩니다.
 - `calibration.datasets` 에는 **아무 HF 데이터셋**이나 넣을 수 있습니다 (`text`/`instruction`/`question`/`output` 등 필드를 자동 추출)
+- calibration dataset은 한국어 BI를 측정하는 용도이기 때문에, 어느 것을 사용하든 상관없습니다.
 
 ---
 
@@ -102,14 +103,14 @@ model:
   name: microsoft/phi-4        # HF 모델 ID 또는 로컬 경로
   dtype: bfloat16
 prune:
-  ratio: 0.30                  # 제거할 레이어 비율 (0.30 = 레이어의 30% 제거, 예: 40층 → 28층)
+  ratio: 0.30                  # 제거할 레이어 비율 (0.30 = 레이어의 30% 제거, 예: 40층 → 28층). 논문의 대표 결과는 LLaMA2에서 25~27%
 calibration:
   datasets:                    # BI 측정용 한국어 보정 텍스트 (HF 데이터셋)
     - MarkrAI/KoCommercial-Dataset
     - beomi/KoAlpaca-RealQA
     - beomi/kowikitext-qa-ref-detail-preview
-  seq_len: 1024                # 보정 시퀀스 길이
-  n_samples: 256               # 보정 샘플 수 (많을수록 BI 안정적, 메모리 사용량은 증가)
+  seq_len: 1024                # 보정 시퀀스 길이. 논문값
+  n_samples: 256               # 보정 샘플 수 (많을수록 BI 안정적, 메모리 사용량은 증가). 임의값
   seed: 42
 output:
   dir: artifacts/phi4-pruned   # 결과 저장 경로 (--out 으로 덮어쓰기 가능)
