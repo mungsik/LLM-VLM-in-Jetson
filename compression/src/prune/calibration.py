@@ -4,8 +4,12 @@ from __future__ import annotations
 import torch
 
 
-def tokenize_texts(texts: list[str], tokenizer, seq_len: int) -> torch.Tensor:
-    """텍스트 리스트를 고정 길이 input_ids 배치로 토크나이즈."""
+def tokenize_texts(texts: list[str], tokenizer, seq_len: int, return_mask: bool = False):
+    """텍스트 리스트를 고정 길이 배치로 토크나이즈.
+
+    return_mask=False(기본): input_ids Tensor만 반환(하위호환).
+    return_mask=True: (input_ids, attention_mask) 반환 — BI 측정 시 패딩 제외용.
+    """
     if tokenizer.pad_token is None:
         # Llama 계열 토크나이저는 pad_token이 없는 경우가 많음 → eos로 대체
         tokenizer.pad_token = tokenizer.eos_token
@@ -16,6 +20,8 @@ def tokenize_texts(texts: list[str], tokenizer, seq_len: int) -> torch.Tensor:
         truncation=True,
         max_length=seq_len,
     )
+    if return_mask:
+        return enc["input_ids"], enc["attention_mask"]
     return enc["input_ids"]
 
 

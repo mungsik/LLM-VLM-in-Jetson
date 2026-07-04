@@ -1,0 +1,14 @@
+model:
+  name: microsoft/phi-4
+  dtype: bfloat16
+prune:
+  width_ratio: 0.30
+  importance: activation
+calibration:
+  datasets:
+    - MarkrAI/KoCommercial-Dataset
+  seq_len: 512
+  n_samples: 64
+  seed: 42
+output:
+  dir: artifacts/phi4-pruned-act

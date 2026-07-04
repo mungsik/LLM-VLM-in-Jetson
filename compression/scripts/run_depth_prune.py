@@ -39,7 +39,10 @@ def main():
         n_samples=cfg["calibration"]["n_samples"],
         seed=cfg["calibration"]["seed"],
     )
-    batch = tokenize_texts(texts, tok, seq_len=cfg["calibration"]["seq_len"]).to("cuda")
+    input_ids, attn = tokenize_texts(
+        texts, tok, seq_len=cfg["calibration"]["seq_len"], return_mask=True
+    )
+    batch = {"input_ids": input_ids.to("cuda"), "attention_mask": attn.to("cuda")}
 
     bi = compute_block_influence(model, [batch])
     print("Block Influence per layer:", [round(x, 4) for x in bi.tolist()], flush=True)
