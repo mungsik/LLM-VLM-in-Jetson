@@ -1,4 +1,4 @@
-from src.data.replay import interleave
+from src.data.replay import interleave, interleave_stream
 
 
 def test_hits_target_ratio_and_consumes_all_primary():
@@ -18,3 +18,12 @@ def test_zero_ratio_returns_primary_unchanged():
 def test_deterministic_with_seed():
     p, r = list(range(50)), list(range(100, 200))
     assert interleave(p, r, 0.3, seed=7) == interleave(p, r, 0.3, seed=7)
+
+
+def test_stream_consumes_generator_primary_and_hits_ratio():
+    primary = (x for x in range(1000))            # one-shot generator (streaming)
+    replay = list(range(10000, 20000))
+    mixed = list(interleave_stream(primary, replay, replay_ratio=0.2, seed=0))
+    n_replay = sum(1 for x in mixed if x >= 10000)
+    assert abs(n_replay / len(mixed) - 0.2) < 0.02
+    assert sum(1 for x in mixed if x < 1000) == 1000

@@ -1,8 +1,13 @@
 from src.data.cpt_corpus import build_cpt_dataset, tokenize_texts
 
+# 참고: build_cpt_dataset_streaming(대용량, HF streaming + Dataset.from_generator)은
+# 순수 스트리밍 로직(pack_token_stream / interleave_stream)이 각 모듈 단위테스트로 커버되고,
+# HF 로드/Arrow 기록 글루는 build_cpt_data.py CLI 스모크로 통합검증한다.
+
 
 class FakeTokenizer:
-    """공백 분할 → 정수 id. eos_token_id 제공. add_special_tokens 무시."""
+    """공백 분할 → 정수 id. eos_token_id 제공. add_special_tokens 무시.
+    값은 임의(해시 기반); 테스트는 개수/구조만 검증하므로 프로세스 간 값 차이 무관."""
     eos_token_id = 0
 
     def __call__(self, text, add_special_tokens=False):
@@ -25,7 +30,7 @@ def test_build_dataset_blocks_and_labels():
     )
     assert set(ds.column_names) == {"input_ids", "labels"}
     assert all(len(r) == 8 for r in ds["input_ids"])
-    assert ds["labels"][0] == ds["input_ids"][0]   # CPT: labels == input_ids
+    assert ds["labels"] == ds["input_ids"]   # CPT: labels == input_ids (전체 컬럼)
 
 
 def test_build_dataset_mixes_replay():
