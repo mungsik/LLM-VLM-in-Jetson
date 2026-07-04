@@ -1,0 +1,25 @@
+# CPT 데이터 빌드 설정
+tokenizer: "microsoft/phi-4"        # 또는 프루닝 산출물 경로
+block_size: 4096
+replay_ratio: 0.15
+seed: 0
+
+primary_sources:
+  - path: "wikimedia/wikipedia"
+    name: "20231101.ko"
+    split: "train"
+    text_field: "text"
+  # 대용량 CPT 메인 (스키마 확인 후 활성화):
+  # - path: "opendatalab/WanJuan-Korean"
+  #   name: null
+  #   split: "train"
+  #   text_field: "content"
+
+replay_sources:
+  - path: "Salesforce/wikitext"
+    name: "wikitext-103-raw-v1"
+    split: "train"
+    text_field: "text"
+
+# 소스별 문서 상한 (null = 전체). 스모크 땐 100 등으로 축소.
+max_docs_per_source: null
