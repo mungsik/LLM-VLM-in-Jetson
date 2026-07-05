@@ -1,0 +1,15 @@
+model:
+  name: microsoft/phi-4
+  dtype: bfloat16
+prune:
+  ratio: 0.30                # sweep_prune가 ratio별로 덮어씀
+  importance: activation
+calibration:
+  datasets:
+    - MarkrAI/KoCommercial-Dataset
+    - beomi/KoAlpaca-RealQA
+  seq_len: 1024
+  n_samples: 256
+  seed: 42
+output:
+  dir: artifacts/phi4-pruned    # sweep_prune가 ratio별로 덮어씀

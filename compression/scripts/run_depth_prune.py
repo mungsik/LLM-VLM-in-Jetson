@@ -47,7 +47,7 @@ def main():
     bi = compute_block_influence(model, [batch])
     print("Block Influence per layer:", [round(x, 4) for x in bi.tolist()], flush=True)
 
-    model, info = prune_depth(model, ratio=cfg["prune"]["width_ratio"], bi_scores=bi)
+    model, info = prune_depth(model, ratio=cfg["prune"].get("ratio", cfg["prune"].get("width_ratio")), bi_scores=bi)
     print("Layers kept:", info["layers_kept"], flush=True)
 
     out_dir = args.out or cfg["output"]["dir"]
