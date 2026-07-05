@@ -57,8 +57,17 @@ def _stream_texts(source_specs: list[dict], max_docs: int | None):
                 yield val
 
 
-def _cpt_example_gen(primary_specs, replay_blocks, tokenizer, block_size, replay_ratio, seed, max_docs):
-    """모듈레벨 제너레이터(from_generator용). primary는 스트리밍, replay는 유한 풀."""
+def _cpt_example_gen(config):
+    """모듈레벨 제너레이터(from_generator용). primary는 스트리밍, replay는 유한 풀.
+    인자를 단일 dict(config)로 받음 — gen_kwargs에 여러 리스트를 넘기면 datasets 샤딩이
+    모호해지므로(어느 리스트로 병렬화?), 리스트들을 dict로 감싸 회피한다."""
+    primary_specs = config["primary_specs"]
+    replay_blocks = config["replay_blocks"]
+    tokenizer = config["tokenizer"]
+    block_size = config["block_size"]
+    replay_ratio = config["replay_ratio"]
+    seed = config["seed"]
+    max_docs = config["max_docs"]
     eos = tokenizer.eos_token_id
     primary_tok = (
         tokenizer(t, add_special_tokens=False)["input_ids"]
@@ -96,7 +105,7 @@ def build_cpt_dataset_streaming(
     )
     return Dataset.from_generator(
         _cpt_example_gen,
-        gen_kwargs=dict(
+        gen_kwargs={"config": dict(
             primary_specs=primary_specs,
             replay_blocks=replay_blocks,
             tokenizer=tokenizer,
@@ -104,5 +113,5 @@ def build_cpt_dataset_streaming(
             replay_ratio=replay_ratio,
             seed=seed,
             max_docs=max_docs,
-        ),
+        )},
     )
