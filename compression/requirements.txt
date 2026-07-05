@@ -12,4 +12,4 @@ safetensors>=0.4           # teacher top-k 사전계산 저장
 
 # 선택: GGUF 양자화 모델 평가(benchmarks/) 시에만 필요
 # gguf>=0.10.0
-openai
+openai>=1.0,<3

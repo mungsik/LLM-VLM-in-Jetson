@@ -29,5 +29,9 @@ def test_aggregate_consistent_loss():
 
 
 def test_aggregate_inconsistent_is_tie():
-    assert aggregate_two_orders("A", "A") == "tie"   # 위치편향(항상 A) → tie
-    assert aggregate_two_orders("C", "C") == "tie"
+    assert aggregate_two_orders("A", "A") == "tie"      # 위치편향(항상 A) → tie
+    assert aggregate_two_orders("tie", "tie") == "tie"  # 실제 파이프라인이 주는 값(C→"tie")
+    # 한쪽만 결정적이고 다른쪽 tie → 보수적으로 tie
+    assert aggregate_two_orders("A", "tie") == "tie"
+    assert aggregate_two_orders("tie", "B") == "tie"
+    assert aggregate_two_orders("B", "tie") == "tie"
