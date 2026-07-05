@@ -1,0 +1,25 @@
+# SFT 대화데이터 빌드 설정
+clean_threshold: 0.05          # 영어오염 대화 컷 (corpus.conversation_is_clean)
+max_rows_per_source: null      # 소스별 상한 (null=전체, 스모크 땐 200 등)
+
+sources:
+  - path: "lemon-mint/smol-koreantalk"
+    name: null
+    split: "train"
+    type: "messages"
+    fields: {messages_field: "messages"}
+    repeat: 1
+  # 네이티브 앵커: KoAlpaca-RealQA(beomi)는 gated → 비게이트 네이티브 KoAlpaca-v1.1a로 대체.
+  # 게이트 승인 시 beomi/KoAlpaca-RealQA(fields: instruction/output)로 교체 가능.
+  - path: "beomi/KoAlpaca-v1.1a"
+    name: null
+    split: "train"
+    type: "alpaca"
+    fields: {instruction_field: "instruction", input_field: "input", output_field: "output"}
+    repeat: 2
+  - path: "MarkrAI/KoCommercial-Dataset"
+    name: null
+    split: "train"
+    type: "alpaca"
+    fields: {instruction_field: "instruction", input_field: "input", output_field: "output"}
+    repeat: 1
