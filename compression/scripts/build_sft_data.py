@@ -38,7 +38,7 @@ def main() -> None:
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
 
-    with open(args.config) as f:
+    with open(args.config, encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
     max_rows = cfg.get("max_rows_per_source")
     threshold = cfg.get("clean_threshold", 0.05)
