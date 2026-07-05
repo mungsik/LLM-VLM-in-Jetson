@@ -37,7 +37,8 @@ def run_ifeval(generate_fn, prompts: list[dict] = IFEVAL_PROMPTS) -> dict:
     passed = 0
     for p in prompts:
         ans = generate_fn(p["prompt"])
-        if p["verify"](ans):
+        # 빈 답은 어떤 지시도 통과 못 함(금칙어 검증이 vacuously True 되는 것 방지).
+        if ans and ans.strip() and p["verify"](ans):
             passed += 1
     n = len(prompts)
     return {"pass_rate": passed / n if n else 0.0, "n": n, "passed": passed}
