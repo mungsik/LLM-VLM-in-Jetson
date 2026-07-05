@@ -9,14 +9,15 @@ sources:
     type: "messages"
     fields: {messages_field: "messages"}
     repeat: 1
-  # 네이티브 앵커: KoAlpaca-RealQA(beomi)는 gated → 비게이트 네이티브 KoAlpaca-v1.1a로 대체.
-  # 게이트 승인 시 beomi/KoAlpaca-RealQA(fields: instruction/output)로 교체 가능.
-  - path: "beomi/KoAlpaca-v1.1a"
+  # 네이티브 앵커: KoAlpaca-RealQA(실제 ChatKoAlpaca 유저 질의). gated → HF 승인 완료(계정 mungsik).
+  # 스키마 = question/answer (instruction/output 아님). 영어 혼재분은 clean 필터가 컷.
+  # VM에 HF 토큰 필요(~/.cache/huggingface/token). 없으면 KoAlpaca-v1.1a(비게이트)로 대체 가능.
+  - path: "beomi/KoAlpaca-RealQA"
     name: null
     split: "train"
     type: "alpaca"
-    fields: {instruction_field: "instruction", input_field: "input", output_field: "output"}
-    repeat: 2
+    fields: {instruction_field: "question", input_field: "none", output_field: "answer"}
+    repeat: 2                            # 네이티브·소량 → 자연스러움 앵커로 가중 반복
   - path: "MarkrAI/KoCommercial-Dataset"
     name: null
     split: "train"
