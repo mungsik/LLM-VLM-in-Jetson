@@ -1,0 +1,13 @@
+# CPT full-FT 학습 설정 (HF Trainer + paged_adamw_8bit)
+model_path: "artifacts/prune_sweep/ratio_0.35"   # 스윕 선택: 절벽 직전 최고품질(9.89B)
+data_path: "artifacts/cpt_data"                    # Plan 1 build_cpt_data 산출물(bounded)
+output_dir: "artifacts/phi4-cpt"
+max_seq_length: 4096
+learning_rate: 3.0e-5                 # CPT는 낮은 LR (망각 방지)
+num_train_epochs: 1
+warmup_ratio: 0.05
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 16       # 유효 배치 16
+logging_steps: 20
+save_steps: 500
+max_steps: -1                         # 스모크 땐 5 등으로
