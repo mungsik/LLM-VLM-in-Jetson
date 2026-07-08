@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>Phi-4 경량화 — 구조적 프루닝 비교</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+    color: #1a1a1a; line-height: 1.55; font-size: 10.5pt; margin: 0;
+  }
+  h1 { font-size: 21pt; margin: 0 0 4px; color: #0b3d91; }
+  h2 { font-size: 14pt; margin: 22px 0 8px; padding-bottom: 4px;
+       border-bottom: 2px solid #0b3d91; color: #0b3d91; }
+  h3 { font-size: 11.5pt; margin: 14px 0 6px; color: #333; }
+  .sub { color: #555; font-size: 10pt; margin: 0 0 2px; }
+  .meta { color: #777; font-size: 9pt; margin: 0 0 14px; }
+  table { border-collapse: collapse; width: 100%; margin: 8px 0 12px; font-size: 9.5pt; }
+  th, td { border: 1px solid #ccc; padding: 5px 8px; text-align: left; }
+  th { background: #eef2fb; color: #0b3d91; }
+  td.num, th.num { text-align: right; }
+  td.c, th.c { text-align: center; }
+  .best { background: #e8f5e9; font-weight: bold; }
+  .key { background: #fff8e1; border-left: 4px solid #f4b400; padding: 8px 12px; margin: 10px 0; }
+  .note { background: #f5f5f5; border-left: 4px solid #999; padding: 7px 12px; margin: 8px 0; font-size: 9.5pt; color: #444; }
+  code { background: #f0f0f0; padding: 1px 4px; border-radius: 3px; font-size: 9pt; }
+  ul { margin: 6px 0 6px 0; padding-left: 20px; }
+  li { margin: 2px 0; }
+  .ok { color: #137333; font-weight: bold; }
+  .bad { color: #c5221f; font-weight: bold; }
+  .small { font-size: 9pt; color: #666; }
+  .pill { display:inline-block; background:#0b3d91; color:#fff; border-radius:10px; padding:1px 8px; font-size:8.5pt; }
+</style>
+</head>
+<body>
+
+<h1>Phi-4 경량화 — 구조적 프루닝 방법 비교</h1>
+<p class="sub">Phi-4 (14B) → Jetson Orin Nano 8GB 온디바이스 구동을 위한 structured pruning 실험</p>
+<p class="meta">Pseudo-Lab · LLM-VLM-in-Jetson · 2026-06 · 실험 GPU: NVIDIA RTX PRO 6000 Blackwell 96GB (GCP)</p>
+
+<h2>1. 배경 & 목표</h2>
+<p>목표는 <b>Phi-4 (14.7B)</b>를 압축해 <b>Jetson Orin Nano 8GB</b>에서 한국어 에이전트로 구동하는 것이다.
+Jetson Orin Nano는 CPU/GPU가 8GB를 공유하고 OS·런타임이 1.5~2GB를 점유해, 실사용 가능 메모리는 약 5.5~6.5GB다.</p>
+
+<table>
+<tr><th>구성</th><th class="num">가중치 메모리</th><th>비고</th></tr>
+<tr><td>Phi-4 (14.7B) FP16</td><td class="num">~29 GB</td><td>원본</td></tr>
+<tr><td>INT4 (4-bit) 양자화만</td><td class="num">~7.3 GB</td><td>8GB에 빠듯 / OOM 위험</td></tr>
+</table>
+
+<p>즉 <b>양자화만으로는 부족</b>하며, 파라미터 차원 자체를 줄이는 <b>구조적 프루닝</b>이 필요하다.
+배포 런타임은 엣지에 실용적인 <b>llama.cpp (GGUF)</b>를 선택했고, 이는 dense 연산이라
+<b>실제 차원 축소(structured)만 메모리 절감으로 이어진다</b>(마스킹/sparsity는 무의미).</p>
+
+<h2>2. 방법론 — 두 축 × 중요도 지표</h2>
+<p>구조적 프루닝은 <b>"무엇을 자르나(축)"</b> × <b>"어떻게 중요도를 매기나(지표)"</b>로 정리된다.</p>
+
+<table>
+<tr><th>축</th><th>자르는 단위</th><th>대표 방법</th></tr>
+<tr><td><b>Width (폭)</b></td><td>MLP intermediate 뉴런 / attention head / hidden 차원</td><td>Minitron, LLM-Pruner, SliceGPT</td></tr>
+<tr><td><b>Depth (깊이)</b></td><td>transformer 레이어/블록 통째</td><td>ShortGPT</td></tr>
+</table>
+
+<table>
+<tr><th>중요도 지표</th><th>핵심</th><th>대표</th></tr>
+<tr><td>활성값 크기 (activation)</td><td>보정 데이터에서의 실제 반응 크기 (forward만)</td><td>Minitron ← 본 실험</td></tr>
+<tr><td>Weight magnitude</td><td>가중치 절댓값 |W|</td><td>베이스라인</td></tr>
+<tr><td>Block Influence</td><td>레이어 입력·출력 코사인 (1 − cos)</td><td>ShortGPT ← 본 실험</td></tr>
+<tr><td>PCA / 회전불변</td><td>주성분으로 hidden 차원 슬라이스</td><td>SliceGPT</td></tr>
+</table>
+
+<h2>3. 구현 — 라이브러리 대신 직접 구현</h2>
+<p>구조적 프루닝 라이브러리를 시도했으나 Phi-4(transformers 5.x)에 막혀, 핵심 알고리즘을 <b>PyTorch로 직접 구현</b>했다.</p>
+<table>
+<tr><th>라이브러리</th><th>결과</th></tr>
+<tr><td><b>Torch-Pruning</b> (의존성 그래프 자동)</td><td class="bad">✗ transformers 5.x Phi-4 추적 중 무한루프 폭주(38분 CPU 100%)</td></tr>
+<tr><td><b>LLM-Pruner</b></td><td class="bad">✗ torch-pruning 기반(동일 폭주, CPU·GPU 둘 다 확인) + Phi-4 미지원(LLaMA계열만)</td></tr>
+<tr><td><b>SliceGPT</b> (microsoft/TransformerCompression)</td><td class="ok">✓ Phi-4 동작 (phi3_adapter 이름매칭만 patch, transformers 4.41)</td></tr>
+<tr><td><b>직접 구현 (Minitron식 width, ShortGPT식 depth)</b></td><td class="ok">✓ Phi-4에 바로 동작, 버전·하드웨어 무관</td></tr>
+</table>
+<div class="note"><b>핵심:</b> 프루닝은 <b>마스킹(0 채움)</b>이 아니라 <b>슬라이싱(텐서 인덱싱으로 차원 실제 축소)</b>으로 구현 →
+파라미터 수가 실제로 줄어 GGUF/메모리에 직결. Llama(분리 gate/up)·Phi-3/4(fused gate_up_proj) 구조 모두 지원.</div>
+
+<h2>4. 실험 환경</h2>
+<ul>
+<li><b>모델:</b> microsoft/phi-4 (14.66B, Phi-3 아키텍처)</li>
+<li><b>보정셋:</b> MarkrAI/KoCommercial-Dataset (한국어) — 활성값 중요도 측정용</li>
+<li><b>평가:</b> KMMLU (lm-eval, 한국어 객관식) · 4-bit 메모리 추정</li>
+<li><b>GPU:</b> RTX PRO 6000 Blackwell 96GB (GCP g4-standard-48)</li>
+</ul>
+
+<h2>5. 결과 — 방법별 비교</h2>
+<p class="small">KMMLU limit=20 (빠른 동일-run 비교). 감축률 = 전체 파라미터 기준.</p>
+<table>
+<tr><th>방법</th><th class="c">축</th><th class="c">중요도</th><th class="num">감축률</th><th class="num">4bit 메모리</th><th class="num">KMMLU</th><th class="num">원본 대비</th></tr>
+<tr><td>원본 Phi-4</td><td class="c">—</td><td class="c">—</td><td class="num">—</td><td class="num">7.33 GB</td><td class="num">34.11%</td><td class="num">100%</td></tr>
+<tr class="best"><td>depth (ShortGPT)</td><td class="c">depth</td><td class="c">Block Influence</td><td class="num">27.9%</td><td class="num">5.28 GB</td><td class="num">31.89%</td><td class="num">~94%</td></tr>
+<tr><td>width (Minitron)</td><td class="c">width</td><td class="c">활성값</td><td class="num">22.5%</td><td class="num">5.68 GB</td><td class="num">18.33%</td><td class="num">~54%</td></tr>
+<tr><td>width (magnitude)</td><td class="c">width</td><td class="c">|W|</td><td class="num">22.5%</td><td class="num">5.68 GB</td><td class="num">7.33%</td><td class="num">~21%</td></tr>
+</table>
+
+<div class="key">
+<b>핵심 발견</b>
+<ul>
+<li><b>① depth(ShortGPT)가 압도적</b> — 더 많이 줄였는데(27.9%) 정확도는 거의 안 떨어짐(34.11→31.89, −2.2점, <b>94% 보존</b>). 잉여 레이어를 제거하기 때문.</li>
+<li><b>② 활성값 ≫ magnitude</b> — 같은 30% MLP 프루닝인데 18.33% vs 7.33%로 <b>2.5배</b> 차이. "어떤 뉴런을 남기냐"가 결정적 → Minitron이 활성값을 쓰는 이유를 정량 입증.</li>
+</ul>
+</div>
+
+<h3>SliceGPT (공식 라이브러리) — 또 하나의 width 프루닝</h3>
+<p class="small">SliceGPT는 hidden 차원을 PCA로 슬라이스. 지표가 wikitext2 PPL이라 위 KMMLU와는 별개(직접 비교 불가). 회복 파인튜닝 전 수치.</p>
+<table>
+<tr><th>모델</th><th class="num">sparsity</th><th class="num">파라미터</th><th class="num">PPL (원본→슬라이스)</th></tr>
+<tr><td>Phi-3-mini</td><td class="num">25%</td><td class="num">3.82B → 3.24B (15.3%↓)</td><td class="num">6.01 → 9.30</td></tr>
+<tr class="best"><td>Phi-4</td><td class="num">30%</td><td class="num">14.66B → 11.48B (21.7%↓)</td><td class="num">6.46 → 9.15</td></tr>
+</table>
+<div class="note">SliceGPT는 공식 lib(microsoft/TransformerCompression)로 <b>Phi-4 정상 동작 확인</b>. (어댑터 이름매칭 patch만 필요)</div>
+
+<h2>6. Block Influence 분석 — 어떤 레이어가 잉여인가</h2>
+<p>각 레이어가 잔차 스트림을 얼마나 바꾸는지(BI = 1 − cos(입력, 출력))를 측정. 낮을수록 잉여.</p>
+<table>
+<tr><th>레이어 구간</th><th class="num">BI</th><th>해석</th></tr>
+<tr><td>0 (첫 레이어)</td><td class="num">0.594</td><td>압도적 1위 — 임베딩→첫 변환, 가장 중요</td></tr>
+<tr><td>1~11</td><td class="num">0.10~0.25</td><td>중요</td></tr>
+<tr><td>27~37 (중간~후반)</td><td class="num">0.03~0.05</td><td class="bad">거의 0 — 잉여 → 제거 대상</td></tr>
+<tr><td>38 (끝 직전)</td><td class="num">0.144</td><td>다시 중요 — 출력 준비 → 유지</td></tr>
+</table>
+<p>→ <b>"중간~후반 레이어가 잉여하다"는 ShortGPT 논문의 주장을 Phi-4에서 직접 재현.</b></p>
+
+<h2>7. 개념 정리 — structured / masking 구분</h2>
+<p>메모리 절감은 <b>"structured + slicing" 한 칸에서만</b> 일어난다.</p>
+<table>
+<tr><th></th><th class="c">Masking (0 채움, shape 유지)</th><th class="c">Slicing (제거, shape 축소)</th></tr>
+<tr><td><b>Unstructured</b> (개별 가중치)</td><td class="c">Wanda / SparseGPT</td><td class="c">불가</td></tr>
+<tr><td><b>Structured</b> (채널·레이어)</td><td class="c">torch.nn.utils.prune (ln_structured)</td><td class="c best">Minitron · ShortGPT (본 실험)</td></tr>
+</table>
+<div class="note"><b>Wanda를 쓰지 않은 이유:</b> Wanda는 unstructured 마스킹이라 차원이 안 줄어든다.
+배포 런타임 llama.cpp(dense)는 sparsity를 활용 못 해 메모리·속도 이득이 0. (2:4 + TensorRT/vLLM 같은 sparse 런타임에서만 의미)</div>
+
+<h2>8. 결론 & 다음 단계</h2>
+<ul>
+<li><b>구조적 프루닝만으로 4bit 5.3GB</b> 달성 → 이미 Jetson 8GB 적재 가능 수준.</li>
+<li><b>Phi-4 → Jetson엔 depth(ShortGPT)가 유리</b> — 더 많이 줄이고 정확도 손실 최소, distillation 회복 부담도 적음.</li>
+<li>모든 수치는 <b>distillation 회복 전</b> 값. 다음 단계로 <b>distillation</b>(teacher=Phi-4, 한국어)으로 width 하락 회복 → GGUF 양자화 → Jetson 실측 예정.</li>
+</ul>
+<p class="small">caveat: KMMLU limit=20은 빠른 비교용 소표본(노이즈 존재). 방법 간 상대 비교는 견고하나 절대값은 full 측정 시 변동. 동일-run 델타가 공정 비교 기준.</p>
+
+</body>
+</html>

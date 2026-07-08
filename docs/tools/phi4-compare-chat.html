@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>한국어 모델 비교 (Phi-4 · Nemotron)</title>
+<style>
+  :root { --bg:#0f1115; --panel:#1a1d24; --border:#2a2f3a; --user:#2563eb; --bot:#272b34; --text:#e7e9ee; --muted:#8b93a4; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Segoe UI",sans-serif; background:var(--bg); color:var(--text); height:100vh; display:flex; flex-direction:column; }
+  header { padding:9px 16px; background:var(--panel); border-bottom:1px solid var(--border); display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+  header h1 { font-size:14px; margin:0; font-weight:600; }
+  .settings { display:flex; gap:14px; align-items:center; flex-wrap:wrap; margin-left:auto; font-size:12px; color:var(--muted); }
+  .settings input[type=text]{ background:#11141a; border:1px solid var(--border); color:var(--text); border-radius:6px; padding:5px 8px; font-size:12px; }
+  #sys { width:230px; }
+  button { background:var(--user); color:#fff; border:none; border-radius:10px; padding:0 18px; height:46px; font-size:14px; font-weight:600; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:default; }
+  button.ghost { background:transparent; border:1px solid var(--border); color:var(--muted); }
+
+  /* 모델 선택 바 */
+  #picker { padding:7px 16px; background:#14171e; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:12px; }
+  #picker .lbl { color:var(--muted); margin-right:4px; }
+  #picker label { display:inline-flex; align-items:center; gap:5px; padding:4px 9px; border:1px solid var(--border); border-radius:20px; cursor:pointer; user-select:none; }
+  #picker label.on { border-color:var(--swatch); color:var(--text); background:#1d2230; }
+  #picker .sw { width:9px; height:9px; border-radius:50%; background:var(--swatch); display:inline-block; }
+  #picker input { display:none; }
+
+  #cols { flex:1; display:flex; min-height:0; }
+  .col { flex:1; display:flex; flex-direction:column; min-width:0; border-right:1px solid var(--border); }
+  .col:last-child { border-right:none; }
+  .colhead { padding:8px 14px; background:#15181f; border-bottom:1px solid var(--border); border-top:3px solid var(--accent); display:flex; align-items:center; gap:8px; font-size:13px; font-weight:600; position:sticky; top:0; }
+  .dot { width:9px; height:9px; border-radius:50%; background:#666; display:inline-block; }
+  .dot.ok { background:#10b981; box-shadow:0 0 6px #10b981; }
+  .dot.bad { background:#ef4444; }
+  .tag { font-size:11px; color:var(--muted); font-weight:400; margin-left:auto; }
+  .chat { flex:1; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:12px; }
+  .msg { max-width:92%; padding:10px 13px; border-radius:12px; line-height:1.6; white-space:pre-wrap; word-break:break-word; font-size:14px; }
+  .msg.user { align-self:flex-end; background:var(--user); color:#fff; border-bottom-right-radius:3px; }
+  .msg.bot { align-self:flex-start; background:var(--bot); border:1px solid var(--border); border-bottom-left-radius:3px; }
+  .msg .who { font-size:10.5px; color:var(--muted); margin-bottom:3px; font-weight:600; }
+  .msg.user .who { color:#cdd9ff; }
+  .stats { font-size:10.5px; color:var(--muted); margin-top:5px; }
+  .empty { color:var(--muted); font-size:13px; padding:20px; text-align:center; margin:auto; }
+  footer { padding:12px 16px; background:var(--panel); border-top:1px solid var(--border); display:flex; gap:10px; align-items:flex-end; }
+  #input { flex:1; resize:none; background:#11141a; border:1px solid var(--border); color:var(--text); border-radius:10px; padding:11px 13px; font-size:14.5px; font-family:inherit; max-height:160px; min-height:46px; line-height:1.5; }
+</style>
+</head>
+<body>
+<header>
+  <h1>한국어 모델 비교</h1>
+  <div class="settings">
+    <label>system <input type="text" id="sys" placeholder="(비움=기본)" value="당신은 한국어로 답하는 친절한 AI 비서입니다."></label>
+    <label>temp <input type="range" id="temp" min="0" max="1.5" step="0.05" value="0.70"><span id="tempV">0.70</span></label>
+    <label>rep_pen <input type="text" id="reppen" value="1.0" style="width:46px"></label>
+    <label>max_tokens <input type="text" id="maxtok" value="512" style="width:56px"></label>
+    <button class="ghost" id="clear" style="height:30px;padding:0 12px;font-size:12px">새 대화</button>
+  </div>
+</header>
+
+<div id="picker"><span class="lbl">비교할 모델 선택:</span></div>
+
+<div id="cols"></div>
+
+<footer>
+  <textarea id="input" placeholder="한국어로 질문하면 선택한 모델들이 동시에 답합니다  (Enter 전송 · Shift+Enter 줄바꿈)"></textarea>
+  <button id="send">전송</button>
+</footer>
+
+<script>
+// ── 모델 레지스트리 ── 각 모델은 vLLM(OpenAI 호환) 엔드포인트로 서빙 후 localhost 로 터널.
+// 포트/모델명이 다르면 여기만 고치면 됩니다.
+const MODEL_REGISTRY = [
+  { key:"base",     label:"Phi-4 원본 (14.7B)",                        base:"http://localhost:8001/v1", model:"phi4-base", color:"#a855f7", on:true },
+  { key:"v1",       label:"phi4-sft-v1 (번역혼합SFT·0.42ep · 9.89B)", base:"http://localhost:8003/v1", model:"phi4-sft-v1", color:"#f59e0b", on:true },
+  { key:"sft",      label:"phi4-sft-v2 (네이티브SFT·2에폭 · 9.89B)",  base:"http://localhost:8002/v1", model:"phi4-sft-v2", color:"#10b981", on:true },
+];
+
+const colsEl = document.getElementById("cols");
+const pickerEl = document.getElementById("picker");
+const input = document.getElementById("input");
+const sendBtn = document.getElementById("send");
+let cols = [];
+
+// ── 모델 선택 칩 ──
+MODEL_REGISTRY.forEach(m => {
+  const lab = document.createElement("label");
+  lab.style.setProperty("--swatch", m.color);
+  lab.className = m.on ? "on" : "";
+  lab.innerHTML = `<input type="checkbox" ${m.on?"checked":""}><span class="sw"></span>${m.label}`;
+  lab.querySelector("input").addEventListener("change", e => { m.on = e.target.checked; lab.className = m.on?"on":""; renderCols(); });
+  pickerEl.appendChild(lab);
+});
+
+document.getElementById("temp").addEventListener("input", e => document.getElementById("tempV").textContent = (+e.target.value).toFixed(2));
+document.getElementById("clear").addEventListener("click", () => { cols.forEach(c => { c.history = []; c.chat.innerHTML = ""; }); input.focus(); });
+
+// 선택된 모델로 컬럼 재구성(선택 바뀌면 호출 — 히스토리 새로 시작)
+function renderCols(){
+  const selected = MODEL_REGISTRY.filter(m => m.on);
+  colsEl.innerHTML = "";
+  if(!selected.length){ colsEl.innerHTML = `<div class="empty">위에서 비교할 모델을 1개 이상 선택하세요.</div>`; cols = []; return; }
+  cols = selected.map(m => {
+    const col = document.createElement("div"); col.className = "col";
+    col.innerHTML = `
+      <div class="colhead" style="border-top-color:${m.color}"><span class="dot" data-dot></span><span>${m.label}</span><span class="tag" data-tag>connecting…</span></div>
+      <div class="chat" data-chat></div>`;
+    colsEl.appendChild(col);
+    const c = { ...m, dot: col.querySelector("[data-dot]"), tag: col.querySelector("[data-tag]"), chat: col.querySelector("[data-chat]"), history: [] };
+    checkHealth(c);
+    return c;
+  });
+}
+
+async function checkHealth(c){
+  try{
+    const r = await fetch(c.base + "/models"); const d = await r.json();
+    c.tag.textContent = d.data[0].id; c.dot.className = "dot ok";
+  }catch(e){ c.dot.className = "dot bad"; c.tag.textContent = "연결 실패 (" + c.base + ")"; }
+}
+
+function addMsg(c, role, text){
+  const div = document.createElement("div");
+  div.className = "msg " + (role === "user" ? "user" : "bot");
+  div.innerHTML = `<div class="who"></div><span class="body"></span>`;
+  div.querySelector(".who").textContent = role === "user" ? "나" : c.model;
+  div.querySelector(".body").textContent = text;
+  c.chat.appendChild(div); c.chat.scrollTop = c.chat.scrollHeight;
+  return div.querySelector(".body");
+}
+
+input.addEventListener("keydown", e => {
+  if(e.isComposing || e.keyCode === 229) return;  // 한글 조합 중 Enter 무시(이중 전송 방지)
+  if(e.key === "Enter" && !e.shiftKey){ e.preventDefault(); send(); }
+});
+input.addEventListener("input", () => { input.style.height="auto"; input.style.height=Math.min(input.scrollHeight,160)+"px"; });
+sendBtn.addEventListener("click", send);
+
+async function streamOne(c, sys, temp, maxtok, reppen){
+  const messages = sys ? [{role:"system", content:sys}, ...c.history] : [...c.history];
+  const bodyEl = addMsg(c, "bot", "");
+  const t0 = performance.now();
+  let acc = "", ntok = 0, firstTok = null;
+  try{
+    const resp = await fetch(c.base + "/chat/completions", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ model:c.model, messages, temperature:temp, max_tokens:maxtok, repetition_penalty:reppen, stream:true })
+    });
+    if(!resp.ok){
+      let msg = resp.status + " " + resp.statusText;
+      try{ const j = await resp.json(); msg = j.error?.message || j.message || JSON.stringify(j); }catch(_){}
+      bodyEl.textContent = "⚠️ 요청 거부 (" + resp.status + "): " + msg;
+      c.history.pop();
+      return;
+    }
+    const reader = resp.body.getReader(); const dec = new TextDecoder(); let buf = "";
+    while(true){
+      const {done, value} = await reader.read(); if(done) break;
+      buf += dec.decode(value, {stream:true});
+      const lines = buf.split("\n"); buf = lines.pop();
+      for(const line of lines){
+        const s = line.trim(); if(!s.startsWith("data:")) continue;
+        const data = s.slice(5).trim(); if(data === "[DONE]") continue;
+        try{ const j = JSON.parse(data); const delta = j.choices?.[0]?.delta?.content || "";
+          if(delta){ if(firstTok===null) firstTok = performance.now(); acc += delta; ntok++; bodyEl.textContent = acc; c.chat.scrollTop = c.chat.scrollHeight; }
+        }catch(_){}
+      }
+    }
+    c.history.push({role:"assistant", content:acc});
+    const dt = (performance.now()-t0)/1000, ttft = firstTok ? ((firstTok-t0)/1000).toFixed(2) : "-";
+    const stat = document.createElement("div"); stat.className = "stats";
+    stat.textContent = `${ntok} chunks · ${dt.toFixed(1)}s · TTFT ${ttft}s`;
+    bodyEl.parentElement.appendChild(stat);
+  }catch(e){ bodyEl.textContent = "⚠️ 오류: " + e.message + " (터널 확인)"; c.dot.className = "dot bad"; c.history.pop(); }
+}
+
+async function send(){
+  const text = input.value.trim(); if(!text || !cols.length) return;
+  input.value = ""; input.style.height="auto";
+  const sys = document.getElementById("sys").value.trim();
+  const temp = +document.getElementById("temp").value;
+  const reppen = parseFloat(document.getElementById("reppen").value) || 1.0;
+  const maxtok = parseInt(document.getElementById("maxtok").value) || 512;
+
+  cols.forEach(c => { addMsg(c, "user", text); c.history.push({role:"user", content:text}); });
+  sendBtn.disabled = true;
+  await Promise.all(cols.map(c => streamOne(c, sys, temp, maxtok, reppen)));
+  sendBtn.disabled = false; input.focus();
+}
+
+renderCols();
+input.focus();
+</script>
+</body>
+</html>
