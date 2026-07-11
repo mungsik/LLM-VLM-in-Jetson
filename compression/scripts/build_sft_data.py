@@ -13,9 +13,17 @@ from datasets import load_dataset
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.distill.corpus import conversation_is_clean
-from src.distill.sft_sources import alpaca_to_messages, messages_to_canonical
+from src.distill.sft_sources import (
+    alpaca_to_messages,
+    korquad_to_messages,
+    messages_to_canonical,
+)
 
-ADAPTERS = {"alpaca": alpaca_to_messages, "messages": messages_to_canonical}
+ADAPTERS = {
+    "alpaca": alpaca_to_messages,
+    "messages": messages_to_canonical,
+    "korquad": korquad_to_messages,
+}
 
 
 def _iter_clean_convos(source: dict, max_rows: int | None, threshold: float):
@@ -37,12 +45,10 @@ def main() -> None:
     ap.add_argument("--config", default="configs/sft_data.yaml")
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
-
     with open(args.config, encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
     max_rows = cfg.get("max_rows_per_source")
     threshold = cfg.get("clean_threshold", 0.05)
-
     total = 0
     with open(args.out, "w", encoding="utf-8") as w:
         for s in cfg["sources"]:

@@ -1,0 +1,23 @@
+clean_threshold: 0.05
+max_rows_per_source: 20000
+sources:
+# 네이티브 단일턴 (자연스러움 앵커 — v2와 동일)
+- path: beomi/KoAlpaca-RealQA
+  name: null
+  split: train
+  type: alpaca
+  fields: {instruction_field: question, input_field: none, output_field: answer}
+  repeat: 2
+- path: MarkrAI/KoCommercial-Dataset
+  name: null
+  split: train
+  type: alpaca
+  fields: {instruction_field: instruction, input_field: input, output_field: output}
+  repeat: 1
+# 네이티브 멀티턴 (v3 핵심 추가 — 멀티턴 붕괴 해결)
+- path: heegyu/korquad-chat-v1
+  name: null
+  split: train
+  type: korquad
+  fields: {text_field: text}
+  repeat: 2

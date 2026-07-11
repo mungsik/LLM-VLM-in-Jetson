@@ -37,3 +37,23 @@ def messages_to_canonical(ex: dict, messages_field: str = "messages") -> list[di
     if not (has_user and has_asst):
         return None
     return msgs
+
+
+def korquad_to_messages(ex: dict, text_field: str = "text") -> list[dict] | None:
+    """korquad-chat-v1의 <sys>/<usr>/<bot> text → 정규 messages (네이티브 멀티턴).
+    <sys>(문서)는 system 메시지로, <usr>/<bot>는 user/assistant 턴으로."""
+    from src.distill.korquad_chat import parse_korquad_chat
+
+    parsed = parse_korquad_chat(ex.get(text_field) or "")
+    msgs = []
+    if parsed["system"]:
+        msgs.append({"role": "system", "content": parsed["system"]})
+    for m in parsed["messages"]:
+        content = (m.get("content") or "").strip()
+        if m.get("role") in _VALID_ROLES and content:
+            msgs.append({"role": m["role"], "content": content})
+    has_user = any(m["role"] == "user" for m in msgs)
+    has_asst = any(m["role"] == "assistant" for m in msgs)
+    if not (has_user and has_asst):
+        return None
+    return msgs
