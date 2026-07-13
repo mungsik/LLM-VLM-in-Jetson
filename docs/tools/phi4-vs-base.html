@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>경량화본(GGUF Q3) vs 원본 Phi-4</title>
+<style>
+  :root { --bg:#0f1115; --panel:#181b22; --border:#2a2f3a; --txt:#e6e8ec; --muted:#9aa3b2;
+          --user:#2d3748; --ours:#14432f; --base:#3a3a2d; --accent:#4f9cff; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo",sans-serif;
+         background:var(--bg); color:var(--txt); font-size:14px; }
+  header { padding:12px 16px; border-bottom:1px solid var(--border); background:var(--panel);
+           position:sticky; top:0; z-index:10; }
+  h1 { font-size:16px; margin:0 0 8px; }
+  .controls { display:flex; flex-wrap:wrap; gap:10px 16px; align-items:center; }
+  .ctl { display:flex; align-items:center; gap:6px; }
+  .ctl label { color:var(--muted); font-size:12px; white-space:nowrap; }
+  .ctl input[type=number]{ width:64px; background:#0d0f13; color:var(--txt); border:1px solid var(--border);
+           border-radius:6px; padding:4px 6px; }
+  .preset { padding:6px 10px; border-radius:8px; border:1px solid var(--border); cursor:pointer;
+            background:#0d0f13; color:var(--txt); font-size:12px; }
+  .preset:hover { filter:brightness(1.3); }
+  #reset { margin-left:auto; }
+  .hint { font-size:11.5px; color:var(--muted); margin-top:6px; line-height:1.5; }
+  .cols { display:grid; grid-template-columns:1fr 1fr; gap:0; height:calc(100vh - 205px); }
+  .col { display:flex; flex-direction:column; border-right:1px solid var(--border); min-height:0; }
+  .col:last-child{ border-right:none; }
+  .col h2 { margin:0; padding:8px 14px; font-size:13px; background:var(--panel);
+            border-bottom:1px solid var(--border); }
+  .col h2 .badge{ font-size:11px; color:var(--muted); font-weight:normal; }
+  .log { flex:1; overflow-y:auto; padding:12px 14px; min-height:0; }
+  .msg { margin:0 0 10px; padding:8px 11px; border-radius:10px; white-space:pre-wrap; line-height:1.55;
+         word-break:break-word; }
+  .msg.user { background:var(--user); }
+  .msg.bot-ours { background:var(--ours); }
+  .msg.bot-base { background:var(--base); }
+  .role { font-size:10.5px; color:var(--muted); margin-bottom:3px; text-transform:uppercase; letter-spacing:.5px; }
+  .composer { display:flex; gap:8px; padding:12px 16px; border-top:1px solid var(--border); background:var(--panel); }
+  .composer textarea { flex:1; resize:none; height:44px; background:#0d0f13; color:var(--txt);
+           border:1px solid var(--border); border-radius:8px; padding:10px; font-family:inherit; font-size:14px; }
+  .composer button { padding:0 18px; border-radius:8px; border:none; background:var(--accent); color:#fff;
+           font-weight:600; cursor:pointer; }
+  .composer button:disabled{ opacity:.5; cursor:default; }
+  code { background:#0d0f13; padding:1px 5px; border-radius:4px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🟢 우리 경량화본 <span style="color:var(--accent)">GGUF Q3_K_M (5GB)</span> &nbsp;vs&nbsp; ⚪ 원본 Phi-4 (14.7B)</h1>
+  <div class="controls">
+    <div class="ctl"><label>temperature</label><input id="temp" type="number" step="0.1" min="0" value="0.3"></div>
+    <div class="ctl"><label>repetition_penalty</label><input id="rep" type="number" step="0.05" min="1" value="1.0"></div>
+    <button class="preset" id="reset">↺ 대화 초기화</button>
+  </div>
+  <div class="hint">
+    왼쪽 = <b>프루닝(40→27층) + 한국어 CPT + 대화 SFT + Q3 양자화</b>를 거친 우리 최종 배포본(5GB, Jetson용).
+    오른쪽 = <b>Microsoft Phi-4 원본</b>(14.7B, 압축·한국어학습 전). 한국어 대화에서 <b>5GB 경량화본이 얼마나 자연스러운지</b> 비교해보세요.
+    한 번 입력하면 양쪽에 동시 전송됩니다.
+  </div>
+</header>
+
+<div class="cols">
+  <div class="col">
+    <h2>🟢 우리 경량화본 <span class="badge">GGUF Q3_K_M · 5GB · llama.cpp(:8005)</span></h2>
+    <div class="log" id="log-ours"></div>
+  </div>
+  <div class="col">
+    <h2>⚪ 원본 Phi-4 <span class="badge">microsoft/phi-4 · 14.7B · vLLM(:8006)</span></h2>
+    <div class="log" id="log-base"></div>
+  </div>
+</div>
+
+<div class="composer">
+  <textarea id="input" placeholder="메시지 입력 후 Enter (Shift+Enter 줄바꿈). 양쪽 모델에 동시 전송."></textarea>
+  <button id="send">전송</button>
+</div>
+
+<script>
+const SYS = "당신은 한국어로 답하는 친절한 AI 비서입니다.";
+const MODELS = {
+  ours: { port: 8005, name: "gguf-q3", cls: "bot-ours", hist: [{role:"system",content:SYS}] },
+  base: { port: 8006, name: "phi4-base", cls: "bot-base", hist: [{role:"system",content:SYS}] },
+};
+const $ = id => document.getElementById(id);
+function params(){
+  return {
+    temperature: parseFloat($("temp").value)||0,
+    repetition_penalty: parseFloat($("rep").value)||1,
+  };
+}
+function addMsg(logId, role, cls, text){
+  const log = $(logId);
+  const d = document.createElement("div");
+  d.className = "msg " + cls;
+  d.innerHTML = '<div class="role">'+role+'</div>';
+  const body = document.createElement("div");
+  body.textContent = text;
+  d.appendChild(body);
+  log.appendChild(d);
+  log.scrollTop = log.scrollHeight;
+  return body;
+}
+async function callModel(key, userText){
+  const m = MODELS[key];
+  m.hist.push({role:"user", content:userText});
+  const target = addMsg("log-"+key, key+" 응답 중…", m.cls, "…");
+  try {
+    const res = await fetch(`http://localhost:${m.port}/v1/chat/completions`, {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ model:m.name, messages:m.hist, max_tokens:400, ...params() })
+    });
+    if(!res.ok){ target.textContent = "❌ HTTP "+res.status+" — "+(await res.text()).slice(0,200); return; }
+    const j = await res.json();
+    const out = j.choices[0].message.content;
+    target.parentElement.querySelector(".role").textContent = key==="ours" ? "경량화본" : "원본 Phi-4";
+    target.textContent = out;
+    m.hist.push({role:"assistant", content:out});
+  } catch(e){
+    target.textContent = "❌ 연결 실패: "+e.message+"  (포트포워딩 터널 확인)";
+  }
+}
+async function send(){
+  const t = $("input").value.trim();
+  if(!t) return;
+  $("input").value = "";
+  $("send").disabled = true;
+  addMsg("log-ours","나","user", t);
+  addMsg("log-base","나","user", t);
+  await Promise.all([callModel("ours", t), callModel("base", t)]);
+  $("send").disabled = false;
+  $("input").focus();
+}
+function resetChat(){
+  MODELS.ours.hist = [{role:"system",content:SYS}];
+  MODELS.base.hist = [{role:"system",content:SYS}];
+  $("log-ours").innerHTML = ""; $("log-base").innerHTML = "";
+}
+$("send").onclick = send;
+$("input").addEventListener("keydown", e => {
+  if(e.isComposing || e.keyCode===229) return;   // 한글 IME 조합 중 Enter 무시
+  if(e.key==="Enter" && !e.shiftKey){ e.preventDefault(); send(); }
+});
+$("reset").onclick = resetChat;
+</script>
+</body>
+</html>
