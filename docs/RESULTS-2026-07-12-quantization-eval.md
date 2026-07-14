@@ -27,6 +27,17 @@ Jetson Orin Nano 8GB 배포를 위한 Phi-4 경량화 파이프라인의 **양�
 - 서버 GPU 배포라면 **GPTQ W4A16(−1.3%p)**가 최고 효율.
 - 최종 GGUF Q3 파라미터 실측: **9,888,343,040개(9.89B)**, 텐서 159, 레이어 26. 양자화는 개수 불변(프루닝에서 확정), Q3_K_M 실측 ~4.06 bit/param.
 
+### 2-1. IQ3_XXS 추가 (2026-07-15) — 더 작은 Jetson 옵션
+
+Q3(5.02GB)가 Jetson 8GB에서 KV캐시 포함 시 빡빡할 수 있어, **재프루닝 없이 더 작은 GGUF**로 여유를 확보. (재프루닝 0.40은 품질 절벽 0.351→0.296 + CPT/SFT 재실행 필요라 가성비 나쁨 → 양자화로 해결)
+
+- **`phi4-sft-v2-IQ3_XXS-imat.gguf` = 3.9 GiB (3.38 BPW)** — Q3_K_M(4.7GiB) 대비 **~0.8GiB↓**. imatrix-ko.dat 적용.
+- 텐서 혼합: qkv→q4_K, attn_output→iq3_s, ffn→iq3_xxs (그래서 이론값 3.06보다 큰 실측 3.38 bpw).
+- **생성 검증 OK**: temp 0.3에서 자연스러운 한국어 출력 확인(양자화로 안 깨짐). PPL/KMMLU는 미측정.
+- 재현: `llama-quantize --imatrix imatrix-ko.dat phi4-sft-v2-f16.gguf out.gguf IQ3_XXS` (CPU, ~2.5분).
+- 위치: VM `artifacts/gguf/` (f16+imatrix로 언제든 재생성, 바이너리라 git 미포함).
+- **배포 후보 2개**: Q3_K_M(4.7GiB, 품질 우선) vs IQ3_XXS(3.9GiB, 메모리 여유 우선). Jetson 실측 때 IQ3부터 시도 권장.
+
 ## 3. 함정과 해결 (재현 시 주의)
 
 1. **GGUF 변환 실패** (`tokenizer.model` 없음): 학습 산출물의 `tokenizer_config.json`이 `tokenizer_class="TokenizersBackend"`(원본 Phi-4는 `GPT2Tokenizer`)라 llama.cpp가 SPM 경로로 샘. → **변환용 복사본에서 `tokenizer_class`만 `GPT2Tokenizer`로 수정**.
