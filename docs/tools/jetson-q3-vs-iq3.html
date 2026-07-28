@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jetson 양자화 비교 — Q3_K_M vs IQ3_XXS</title>
+<style>
+  :root{--bg:#0f1115;--panel:#181b22;--border:#2a2f3a;--txt:#e6e8ec;--muted:#9aa3b2;
+        --user:#2d3748;--q3:#14432f;--iq3:#3a2d4d;--accent:#4f9cff;}
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo",sans-serif;
+       background:var(--bg);color:var(--txt);font-size:14px;}
+  header{padding:12px 16px;border-bottom:1px solid var(--border);background:var(--panel);position:sticky;top:0;z-index:10;}
+  h1{font-size:16px;margin:0 0 8px;}
+  .controls{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;}
+  .seg{display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;}
+  .seg button{padding:6px 14px;background:#0d0f13;color:var(--muted);border:none;cursor:pointer;font-size:13px;font-weight:600;}
+  .seg button.on{background:var(--accent);color:#fff;}
+  .ctl{display:flex;align-items:center;gap:6px;}
+  .ctl label{color:var(--muted);font-size:12px;}
+  .ctl input{width:60px;background:#0d0f13;color:var(--txt);border:1px solid var(--border);border-radius:6px;padding:4px 6px;}
+  .preset{padding:6px 10px;border-radius:8px;border:1px solid var(--border);cursor:pointer;background:#0d0f13;color:var(--txt);font-size:12px;}
+  #reset{margin-left:auto;}
+  .hint{font-size:11.5px;color:var(--muted);margin-top:6px;line-height:1.5;}
+  .status{font-size:11.5px;padding:4px 10px;border-radius:6px;margin-top:6px;display:inline-block;}
+  .status.ok{background:#14351f;color:#7fd6a0;}
+  .status.busy{background:#3a2f14;color:#e0b357;}
+  .status.err{background:#3a1f1f;color:#e08a8a;}
+  .log{max-width:820px;margin:0 auto;padding:16px;height:calc(100vh - 250px);overflow-y:auto;}
+  .msg{margin:0 0 12px;padding:9px 12px;border-radius:10px;white-space:pre-wrap;line-height:1.6;word-break:break-word;}
+  .msg.user{background:var(--user);margin-left:60px;}
+  .msg.q3{background:var(--q3);margin-right:60px;}
+  .msg.iq3{background:var(--iq3);margin-right:60px;}
+  .role{font-size:10.5px;color:var(--muted);margin-bottom:3px;text-transform:uppercase;letter-spacing:.5px;}
+  .composer{display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--border);background:var(--panel);max-width:820px;margin:0 auto;}
+  .composer textarea{flex:1;resize:none;height:44px;background:#0d0f13;color:var(--txt);border:1px solid var(--border);border-radius:8px;padding:10px;font-family:inherit;font-size:14px;}
+  .composer button{padding:0 18px;border-radius:8px;border:none;background:var(--accent);color:#fff;font-weight:600;cursor:pointer;}
+  .composer button:disabled{opacity:.5;cursor:default;}
+  code{background:#0d0f13;padding:1px 5px;border-radius:4px;}
+</style>
+</head>
+<body>
+<header>
+  <h1>🔬 Jetson Orin Nano 8GB — 양자화 비교 <span style="color:var(--muted);font-weight:normal;font-size:13px">Q3_K_M (4.67GB) vs IQ3_XXS (3.9GB)</span></h1>
+  <div class="controls">
+    <div class="seg" id="modelseg">
+      <button data-m="q3" class="on">🟢 Q3_K_M (4.67GB)</button>
+      <button data-m="iq3">🟣 IQ3_XXS (3.9GB)</button>
+    </div>
+    <div class="ctl"><label>temperature</label><input id="temp" type="number" step="0.1" min="0" value="0.3"></div>
+    <div class="ctl"><label>DRY</label><input id="dry" type="number" step="0.1" min="0" value="0.8"></div>
+    <button class="preset" id="reset">↺ 대화 초기화</button>
+  </div>
+  <div class="hint">
+    같은 최종 모델(phi4-sft-v2)을 두 가지로 양자화한 것. <b>Q3_K_M</b>=4.67GB(~4.06bpw, 배포본) / <b>IQ3_XXS</b>=3.9GB(~3.38bpw, 더 작음).
+    <b>Jetson 8GB엔 한 번에 하나만 올라가므로</b>, 위에서 모델을 고르면 그 모델로 답합니다. 전환 시 서버 재기동에 ~90초 걸립니다.
+    <br>같은 질문을 양쪽에 던져 <b>3.9GB가 4.67GB만큼 자연스러운지</b> 비교해보세요. (DRY=반복 억제, 한국어 어미 안 깨뜨림)
+    <span class="status ok" id="status">Q3_K_M 서빙 중</span>
+  </div>
+</header>
+
+<div class="log" id="log"></div>
+
+<div class="composer">
+  <textarea id="input" placeholder="메시지 입력 후 Enter. 현재 선택된 모델로 답합니다."></textarea>
+  <button id="send">전송</button>
+</div>
+
+<script>
+const JETSON = "http://100.87.226.68:8005";   // llama-server (현재 서빙 중인 모델)
+let CUR = "q3";                                // 화면상 선택된 모델 (서버 실제 모델과 일치해야 함)
+const hist = [];
+const $ = id => document.getElementById(id);
+
+function setStatus(txt, cls){ const s=$("status"); s.textContent=txt; s.className="status "+cls; }
+function params(){
+  const dry = parseFloat($("dry").value)||0;
+  return { temperature: parseFloat($("temp").value)||0,
+           ...(dry>0 ? {dry_multiplier:dry, dry_base:1.75, dry_allowed_length:2} : {}) };
+}
+function addMsg(role, cls, text){
+  const d=document.createElement("div"); d.className="msg "+cls;
+  d.innerHTML='<div class="role">'+role+'</div>';
+  const b=document.createElement("div"); b.textContent=text; d.appendChild(b);
+  $("log").appendChild(d); $("log").scrollTop=$("log").scrollHeight; return b;
+}
+
+// 모델 전환: 사용자가 세그먼트 클릭 시. 서버 재기동은 수동(SSH)이므로 안내만.
+$("modelseg").querySelectorAll("button").forEach(btn=>{
+  btn.onclick=()=>{
+    const m=btn.dataset.m;
+    if(m===CUR) return;
+    $("modelseg").querySelectorAll("button").forEach(b=>b.classList.toggle("on", b===btn));
+    CUR=m;
+    hist.length=0; $("log").innerHTML="";
+    const name = m==="q3" ? "Q3_K_M" : "IQ3_XXS";
+    setStatus("⚠️ "+name+" 로 서버 전환 필요 — 터미널에서 ./serve.sh "+m+" 실행 후 ~90초 대기", "busy");
+    addMsg("시스템 안내","user",
+      "["+name+"] 모델로 전환하려면 Jetson에서:\n  ./serve.sh "+m+"\n실행 후 약 90초 뒤 대화하세요.\n(Jetson 8GB라 두 모델 동시 로드가 안 됩니다)");
+  };
+});
+
+async function send(){
+  const t=$("input").value.trim(); if(!t) return;
+  $("input").value=""; $("send").disabled=true;
+  addMsg("나","user",t);
+  hist.push({role:"user",content:t});
+  const cls = CUR==="q3" ? "q3" : "iq3";
+  const name = CUR==="q3" ? "Q3_K_M" : "IQ3_XXS";
+  const target=addMsg(name+" 생성 중…", cls, "…");
+  setStatus(name+" 생성 중…","busy");
+  try{
+    const res=await fetch(JETSON+"/v1/chat/completions",{
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({model:CUR,messages:hist,max_tokens:400,...params()})});
+    if(!res.ok){ target.textContent="❌ HTTP "+res.status; setStatus("오류","err"); return; }
+    const j=await res.json();
+    const out=j.choices[0].message.content;
+    target.parentElement.querySelector(".role").textContent=name;
+    target.textContent=out;
+    hist.push({role:"assistant",content:out});
+    setStatus(name+" 서빙 중","ok");
+  }catch(e){
+    target.textContent="❌ 연결 실패: "+e.message+"  (서버 재기동 중이거나 전환 직후일 수 있음)";
+    setStatus("연결 실패 — 서버 확인","err");
+  }
+  $("send").disabled=false; $("input").focus();
+}
+$("send").onclick=send;
+$("input").addEventListener("keydown",e=>{
+  if(e.isComposing||e.keyCode===229) return;
+  if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}
+});
+$("reset").onclick=()=>{hist.length=0;$("log").innerHTML="";};
+</script>
+</body>
+</html>

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>경량화본(GGUF Q3) vs 원본 Phi-4</title>
+<title>Jetson 실기기(GGUF Q3) vs 원본 Phi-4</title>
 <style>
   :root { --bg:#0f1115; --panel:#181b22; --border:#2a2f3a; --txt:#e6e8ec; --muted:#9aa3b2;
           --user:#2d3748; --ours:#14432f; --base:#3a3a2d; --accent:#4f9cff; }
@@ -47,26 +47,32 @@
 </head>
 <body>
 <header>
-  <h1>🟢 우리 경량화본 <span style="color:var(--accent)">GGUF Q3_K_M (4.7GB)</span> &nbsp;vs&nbsp; ⚪ 원본 Phi-4 (14.7B)</h1>
+  <h1>🟢 <span style="color:var(--accent)">Jetson Orin Nano 8GB 실기기</span> (GGUF Q3, 4.7GB) &nbsp;vs&nbsp; ⚪ 원본 Phi-4 (14.7B, GPU서버)</h1>
   <div class="controls">
     <div class="ctl"><label>temperature</label><input id="temp" type="number" step="0.1" min="0" value="0.3"></div>
-    <div class="ctl"><label>repetition_penalty</label><input id="rep" type="number" step="0.05" min="1" value="1.0"></div>
+    <div class="ctl"><label>DRY (반복억제)</label><input id="dry" type="number" step="0.1" min="0" value="0.8"></div>
     <button class="preset" id="reset">↺ 대화 초기화</button>
   </div>
+  <div class="controls" style="margin-top:8px">
+    <label style="color:var(--muted);font-size:12px;white-space:nowrap">system</label>
+    <input id="sys" type="text" value="당신은 한국어로 답하는 친절한 AI 비서입니다."
+      style="flex:1;min-width:280px;background:#0d0f13;color:var(--txt);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:12px">
+    <button class="preset" id="sys-clear">system 비우기</button>
+  </div>
   <div class="hint">
-    왼쪽 = <b>프루닝(40→26층) + 한국어 CPT + 대화 SFT + Q3_K_M 양자화</b>를 거친 최종 배포본(4.7GB, <b>지금 Jetson으로 전송 중인 그 모델</b>).
-    오른쪽 = <b>Microsoft Phi-4 원본</b>(14.7B, 압축·한국어학습 전). 원본의 <b>약 1/4 크기</b>인 경량화본이 한국어 대화를 얼마나 자연스럽게 하는지 비교해보세요.
-    한 번 입력하면 양쪽에 동시 전송됩니다.
+    왼쪽 = <b>실제 Jetson Orin Nano 8GB 기기</b>에서 돌고 있는 우리 최종 배포본(프루닝 40→26층 + 한국어 CPT + SFT + Q3 양자화, 4.7GB, GPU 가속 7.6 t/s).
+    오른쪽 = <b>Microsoft Phi-4 원본</b>(14.7B, GCP RTX PRO 6000 서버). <b>손바닥만한 엣지 기기 vs 데이터센터 GPU</b> 비교입니다.
+    <br>💡 <b>DRY</b>=반복 구절만 억제(0.8 권장, Jetson만 적용). repetition_penalty와 달리 한국어 어미를 안 깨뜨립니다. ⚠️ <b>역할극 하실 땐 system 칸을 비우거나 거기에 역할을 쓰세요</b> — system이 "AI 비서"라고 우기면 모델이 그걸 따라갑니다.
   </div>
 </header>
 
 <div class="cols">
   <div class="col">
-    <h2>🟢 우리 경량화본 <span class="badge">GGUF Q3_K_M · 4.7GB · imatrix · llama.cpp(:8005)</span></h2>
+    <h2>🟢 Jetson 실기기 <span class="badge">GGUF Q3_K_M · 4.7GB · llama.cpp CUDA · 100.120.138.85:8005</span></h2>
     <div class="log" id="log-ours"></div>
   </div>
   <div class="col">
-    <h2>⚪ 원본 Phi-4 <span class="badge">microsoft/phi-4 · 14.7B · vLLM(:8006)</span></h2>
+    <h2>⚪ 원본 Phi-4 <span class="badge">microsoft/phi-4 · 14.7B · vLLM · GCP RTX PRO 6000(:8006)</span></h2>
     <div class="log" id="log-base"></div>
   </div>
 </div>
@@ -77,16 +83,19 @@
 </div>
 
 <script>
-const SYS = "당신은 한국어로 답하는 친절한 AI 비서입니다.";
+const getSys = () => ($("sys") ? $("sys").value.trim() : "");
 const MODELS = {
-  ours: { port: 8005, name: "gguf-q3", cls: "bot-ours", hist: [{role:"system",content:SYS}] },
-  base: { port: 8006, name: "phi4-base", cls: "bot-base", hist: [{role:"system",content:SYS}] },
+  ours: { url: "http://100.120.138.85:8005", name: "q3", cls: "bot-ours", hist: [] },
+  base: { url: "http://localhost:8006", name: "phi4-base", cls: "bot-base", hist: [] },
 };
 const $ = id => document.getElementById(id);
 function params(){
+  const dry = parseFloat($("dry").value)||0;
   return {
     temperature: parseFloat($("temp").value)||0,
-    repetition_penalty: parseFloat($("rep").value)||1,
+    ...(dry > 0 ? { dry_multiplier: dry, dry_base: 1.75, dry_allowed_length: 2 } : {}),
+    // penalty 계열은 한국어 어미(입니다/습니다) 반복을 문법적 필수인데도 깎아
+    // "였습니다"·없는 단어를 만들어냄 → 아예 보내지 않음 (2026-07-16 실측)
   };
 }
 function addMsg(logId, role, cls, text){
@@ -101,19 +110,25 @@ function addMsg(logId, role, cls, text){
   log.scrollTop = log.scrollHeight;
   return body;
 }
-async function callModel(key, userText){
+async function callModel(key, userText){ // key: ours(llama.cpp, DRY지원) / base(vLLM, DRY미지원)
   const m = MODELS[key];
   m.hist.push({role:"user", content:userText});
   const target = addMsg("log-"+key, key+" 응답 중…", m.cls, "…");
   try {
-    const res = await fetch(`http://localhost:${m.port}/v1/chat/completions`, {
+    const res = await fetch(`${m.url}/v1/chat/completions`, {
       method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({ model:m.name, messages:m.hist, max_tokens:400, ...params() })
+      body: JSON.stringify((() => {
+        const p = { model:m.name,
+          messages: getSys() ? [{role:"system",content:getSys()}, ...m.hist] : m.hist,
+          max_tokens:400, ...params() };
+        if (key === "base") { delete p.dry_multiplier; delete p.dry_base; delete p.dry_allowed_length; }
+        return p;
+      })())
     });
     if(!res.ok){ target.textContent = "❌ HTTP "+res.status+" — "+(await res.text()).slice(0,200); return; }
     const j = await res.json();
     const out = j.choices[0].message.content;
-    target.parentElement.querySelector(".role").textContent = key==="ours" ? "경량화본" : "원본 Phi-4";
+    target.parentElement.querySelector(".role").textContent = key==="ours" ? "Jetson 실기기" : "원본 Phi-4";
     target.textContent = out;
     m.hist.push({role:"assistant", content:out});
   } catch(e){
@@ -132,8 +147,7 @@ async function send(){
   $("input").focus();
 }
 function resetChat(){
-  MODELS.ours.hist = [{role:"system",content:SYS}];
-  MODELS.base.hist = [{role:"system",content:SYS}];
+  MODELS.ours.hist = []; MODELS.base.hist = [];
   $("log-ours").innerHTML = ""; $("log-base").innerHTML = "";
 }
 $("send").onclick = send;
@@ -142,6 +156,7 @@ $("input").addEventListener("keydown", e => {
   if(e.key==="Enter" && !e.shiftKey){ e.preventDefault(); send(); }
 });
 $("reset").onclick = resetChat;
+$("sys-clear").onclick = () => { $("sys").value = ""; };
 </script>
 </body>
 </html>

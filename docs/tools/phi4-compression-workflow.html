@@ -1,0 +1,181 @@
+<style>
+  :root{
+    --paper:#faf9f7; --ink:#161513; --muted:#6f6b64; --faint:#9a958c;
+    --hair:#e2ded7; --card:#ffffff; --line:#c9c4bb; --dead:#b4afa6;
+    --mono:"SF Mono",ui-monospace,"JetBrains Mono",Menlo,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Pretendard",sans-serif;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{ --paper:#131211; --ink:#eeeae3; --muted:#9d978c; --faint:#6d675e;
+           --hair:#2b2926; --card:#1b1a18; --line:#413d38; --dead:#57524b; }
+  }
+  :root[data-theme="light"]{ --paper:#faf9f7; --ink:#161513; --muted:#6f6b64; --faint:#9a958c;
+           --hair:#e2ded7; --card:#ffffff; --line:#c9c4bb; --dead:#b4afa6; }
+  :root[data-theme="dark"]{ --paper:#131211; --ink:#eeeae3; --muted:#9d978c; --faint:#6d675e;
+           --hair:#2b2926; --card:#1b1a18; --line:#413d38; --dead:#57524b; }
+
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);
+       -webkit-font-smoothing:antialiased;line-height:1.5;}
+  .wrap{max-width:900px;margin:0 auto;padding:56px 28px 72px;}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--muted);margin:0 0 14px;}
+  h1{font-size:29px;line-height:1.2;font-weight:800;letter-spacing:-.01em;margin:0 0 10px;text-wrap:balance;}
+  .thesis{font-size:14.5px;color:var(--muted);margin:0 0 4px;max-width:64ch;}
+  .thesis b{color:var(--ink);font-weight:700;}
+  .legend{display:flex;gap:18px;flex-wrap:wrap;margin:20px 0 30px;font-family:var(--mono);font-size:11px;color:var(--muted);}
+  .legend span{display:flex;align-items:center;gap:7px;}
+  .swatch{width:22px;height:0;border-top:2px solid var(--line);}
+  .swatch.dash{border-top:2px dashed var(--line);}
+  .swatch.dead{border-top:2px dashed var(--dead);}
+
+  /* flow grid: left inputs | spine | right alternatives */
+  .flow{display:flex;flex-direction:column;align-items:stretch;}
+  .row{display:grid;grid-template-columns:1fr 300px 1fr;gap:0;align-items:center;}
+  .side{font-size:12px;line-height:1.5;}
+  .side.left{text-align:right;padding-right:18px;}
+  .side.right{text-align:left;padding-left:18px;}
+  .side .tag{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);display:block;margin-bottom:3px;}
+  .side .item{color:var(--muted);}
+  .side .item b{color:var(--ink);font-weight:600;}
+  .side.dead .item{color:var(--dead);text-decoration:line-through;text-decoration-thickness:1px;}
+  .side.dead .why{color:var(--faint);text-decoration:none;display:block;font-size:11px;margin-top:1px;}
+
+  /* connector into card from a side */
+  .side.left .item, .side.right .item{position:relative;}
+
+  /* stage card (spine) */
+  .card{background:var(--card);border:1.5px solid var(--ink);border-radius:10px;padding:14px 16px;text-align:center;}
+  .card .num{font-family:var(--mono);font-size:10px;letter-spacing:.16em;color:var(--faint);margin-bottom:5px;}
+  .card .name{font-size:16px;font-weight:700;letter-spacing:-.01em;}
+  .card .meta{font-size:12px;color:var(--muted);margin-top:4px;font-family:var(--mono);}
+  .card.io{border-style:dashed;border-color:var(--line);}
+  .card.io .name{font-weight:700;}
+  .card.deploy{border-width:2px;}
+
+  /* vertical connector between cards (center column) */
+  .conn{display:grid;grid-template-columns:1fr 300px 1fr;}
+  .conn .mid{grid-column:2;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:9px 0;position:relative;}
+  .stem{width:2px;height:26px;background:var(--line);}
+  .arrow{width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:7px solid var(--line);margin-top:-1px;}
+  .decision{font-family:var(--mono);font-size:11px;color:var(--ink);border:1px solid var(--hair);background:var(--paper);border-radius:100px;padding:3px 12px;margin:5px 0;}
+  .decision b{font-weight:700;}
+
+  @media (max-width:720px){
+    .row,.conn{grid-template-columns:1fr;}
+    .conn .mid{grid-column:1;}
+    .side.left,.side.right{text-align:left;padding:8px 0 0;}
+    .side{order:2;}
+    .row .card{order:1;}
+    .legend{font-size:10px;}
+  }
+  footer{margin-top:32px;font-size:11.5px;color:var(--faint);font-family:var(--mono);line-height:1.7;}
+</style>
+
+<div class="wrap">
+  <p class="eyebrow">Pseudo-Lab 12기 · LLM On Jetson</p>
+  <h1>Phi-4 경량화 워크플로우</h1>
+  <p class="thesis">가운데가 <b>실제 채택 경로</b>. 왼쪽은 각 단계에 <b>투입한 데이터·설정</b>,
+     오른쪽은 <b>시도했다 폐기한 대안</b>. 두 번의 갈림길(프루닝 기법 선택, 회복 방법 전환)이 이 프로젝트의 핵심 분기였다.</p>
+
+  <div class="legend">
+    <span><i class="swatch"></i> 채택 경로</span>
+    <span><i class="swatch dash"></i> 투입 데이터</span>
+    <span><i class="swatch dead"></i> 폐기한 대안</span>
+  </div>
+
+  <div class="flow">
+
+    <!-- INPUT -->
+    <div class="row">
+      <div class="side left"></div>
+      <div class="card io"><div class="num">INPUT</div><div class="name">Phi-4 14.7B</div><div class="meta">40층 · BF16 · 29 GB</div></div>
+      <div class="side right"></div>
+    </div>
+
+    <div class="conn"><div class="mid"><div class="stem"></div><div class="arrow"></div></div></div>
+
+    <!-- 1 PRUNING -->
+    <div class="row">
+      <div class="side left"></div>
+      <div class="card"><div class="num">STEP 01 · 프루닝</div><div class="name">ShortGPT depth</div><div class="meta">0.35 · 40→26층 · 9.89B</div></div>
+      <div class="side right dead">
+        <span class="tag">폐기한 프루닝</span>
+        <div class="item">Minitron / SliceGPT / magnitude<span class="why">width 축 — 한국어 붕괴 (18 / 8 / 7%)</span></div>
+        <div class="item">torch-pruning / LLM-Pruner<span class="why">Phi-4 fused proj — 실행 불가</span></div>
+      </div>
+    </div>
+
+    <div class="conn"><div class="mid"><div class="stem"></div><div class="decision"><b>회복 방법?</b></div><div class="stem"></div><div class="arrow"></div></div></div>
+
+    <!-- decision: distillation abandoned -->
+    <div class="row">
+      <div class="side left"></div>
+      <div class="card io" style="border-style:dashed"><div class="num">전환</div><div class="name">CPT + SFT 채택</div><div class="meta">distillation 대신 한국어 직접 주입</div></div>
+      <div class="side right dead">
+        <span class="tag">폐기한 회복</span>
+        <div class="item">Distillation ×2 (seq · logit KD)<span class="why">KMMLU 42%나 대화품질 실패 → 폐기</span></div>
+      </div>
+    </div>
+
+    <div class="conn"><div class="mid"><div class="stem"></div><div class="arrow"></div></div></div>
+
+    <!-- 2 CPT -->
+    <div class="row">
+      <div class="side left">
+        <span class="tag">투입 데이터</span>
+        <div class="item"><b>한국어 위키 + WanJuan</b> ~93.5M</div>
+        <div class="item"><b>영어 replay</b> 15% (wikitext)</div>
+      </div>
+      <div class="card"><div class="num">STEP 02 · CPT</div><div class="name">한국어 주입</div><div class="meta">110M 토큰 · full-FT</div></div>
+      <div class="side right"></div>
+    </div>
+
+    <div class="conn"><div class="mid"><div class="stem"></div><div class="arrow"></div></div></div>
+
+    <!-- 3 SFT -->
+    <div class="row">
+      <div class="side left">
+        <span class="tag">투입 데이터</span>
+        <div class="item"><b>KoAlpaca-RealQA</b> ×2 (앵커)</div>
+        <div class="item"><b>KoCommercial</b> 20k = 55.5k 단일턴</div>
+      </div>
+      <div class="card"><div class="num">STEP 03 · SFT</div><div class="name">대화 학습</div><div class="meta">LoRA r64 · 2 epoch</div></div>
+      <div class="side right dead">
+        <span class="tag">폐기한 데이터</span>
+        <div class="item">smol-koreantalk<span class="why">번역투 → 제거</span></div>
+        <div class="item">korquad 멀티턴 (v3)<span class="why">일상대화 어색 → 미채택</span></div>
+      </div>
+    </div>
+
+    <div class="conn"><div class="mid"><div class="stem"></div><div class="arrow"></div></div></div>
+
+    <!-- 4 QUANT -->
+    <div class="row">
+      <div class="side left">
+        <span class="tag">보정</span>
+        <div class="item"><b>imatrix</b> 한국어 calib</div>
+      </div>
+      <div class="card"><div class="num">STEP 04 · 양자화 (PTQ)</div><div class="name">GGUF Q3_K_M</div><div class="meta">약 4 bit · 5.02 GB</div></div>
+      <div class="side right dead">
+        <span class="tag">비교·미채택</span>
+        <div class="item">GPTQ / AWQ (llm-compressor)<span class="why">서버 GPU용 — 엣지 아님</span></div>
+        <div class="item">Q4 / IQ3<span class="why">Q4 빡빡 · IQ3 대등하나 미채택</span></div>
+      </div>
+    </div>
+
+    <div class="conn"><div class="mid"><div class="stem"></div><div class="arrow"></div></div></div>
+
+    <!-- 5 DEPLOY -->
+    <div class="row">
+      <div class="side left"></div>
+      <div class="card deploy"><div class="num">STEP 05 · 배포</div><div class="name">Jetson Orin Nano 8GB</div><div class="meta">llama.cpp · -ngl 26 · 4–7.6 tok/s</div></div>
+      <div class="side right"></div>
+    </div>
+
+  </div>
+
+  <footer>
+    두 갈림길: ① 프루닝 4기법 중 depth(ShortGPT)만 생존 ② distillation 2회 실패 → CPT+SFT로 전환.<br>
+    최종: 29GB → 4.67GB (약 6배), KMMLU 0.356 → 0.377 (원본 초월 · limit=50 동일 하니스).
+  </footer>
+</div>

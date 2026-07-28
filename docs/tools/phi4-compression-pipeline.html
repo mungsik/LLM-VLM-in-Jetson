@@ -1,0 +1,184 @@
+<style>
+  :root{
+    --paper:#faf9f7; --ink:#161513; --muted:#6f6b64; --faint:#9a958c;
+    --hair:#e2ded7; --track:#ececE6; --bar:#161513; --barsub:#b9b3a8;
+    --mark:#161513;
+    --mono:"SF Mono",ui-monospace,"JetBrains Mono",Menlo,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Pretendard",sans-serif;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{ --paper:#131211; --ink:#eeeae3; --muted:#9d978c; --faint:#6d675e;
+           --hair:#2b2926; --track:#232120; --bar:#eeeae3; --barsub:#4a4641; --mark:#eeeae3; }
+  }
+  :root[data-theme="light"]{ --paper:#faf9f7; --ink:#161513; --muted:#6f6b64; --faint:#9a958c;
+           --hair:#e2ded7; --track:#ececE6; --bar:#161513; --barsub:#b9b3a8; --mark:#161513; }
+  :root[data-theme="dark"]{ --paper:#131211; --ink:#eeeae3; --muted:#9d978c; --faint:#6d675e;
+           --hair:#2b2926; --track:#232120; --bar:#eeeae3; --barsub:#4a4641; --mark:#eeeae3; }
+
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);
+       -webkit-font-smoothing:antialiased;line-height:1.5;}
+  .wrap{max-width:860px;margin:0 auto;padding:56px 32px 72px;}
+
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.22em;text-transform:uppercase;
+           color:var(--muted);margin:0 0 14px;}
+  h1{font-size:30px;line-height:1.2;font-weight:800;letter-spacing:-.01em;margin:0 0 10px;text-wrap:balance;}
+  .thesis{font-size:15px;color:var(--muted);margin:0 0 6px;max-width:60ch;}
+  .thesis b{color:var(--ink);font-weight:700;}
+
+  .rule{height:1px;background:var(--hair);border:0;margin:34px 0 28px;}
+
+  /* stage rows */
+  .stage{display:grid;grid-template-columns:26px 1fr;gap:16px;padding:18px 0;
+         border-bottom:1px solid var(--hair);}
+  .stage:last-of-type{border-bottom:0;}
+  .idx{font-family:var(--mono);font-size:12px;color:var(--faint);padding-top:3px;font-variant-numeric:tabular-nums;}
+  .body{min-width:0;}
+  .top{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:3px;}
+  .name{font-size:16px;font-weight:700;letter-spacing:-.01em;}
+  .detail{font-size:12.5px;color:var(--muted);}
+  .chips{display:flex;gap:6px;margin:8px 0 10px;flex-wrap:wrap;}
+  .chip{font-family:var(--mono);font-size:10.5px;letter-spacing:.02em;color:var(--muted);
+        border:1px solid var(--hair);border-radius:100px;padding:2px 9px;}
+
+  /* size bar */
+  .barrow{display:flex;align-items:center;gap:12px;}
+  .track{flex:1;height:16px;background:var(--track);border-radius:3px;overflow:hidden;}
+  .bar{height:100%;background:var(--bar);border-radius:3px;}
+  .bar.sub{background:var(--barsub);}
+  .size{font-family:var(--mono);font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;
+        white-space:nowrap;min-width:74px;text-align:right;}
+
+  /* kmmlu line */
+  .kmmlu{display:flex;align-items:center;gap:8px;margin-top:9px;font-size:12.5px;color:var(--muted);}
+  .kmmlu .label{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);}
+  .kmmlu .val{font-family:var(--mono);font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums;}
+  .kmmlu .delta{font-family:var(--mono);font-size:11px;font-variant-numeric:tabular-nums;}
+  .up{color:var(--ink);border-bottom:2px solid var(--mark);padding-bottom:1px;}
+
+  /* axis annotations */
+  .axis{border-left:2px solid var(--ink);padding:2px 0 2px 12px;margin:2px 0 2px 0;
+        font-size:12px;color:var(--muted);}
+  .axis b{color:var(--ink);}
+
+  /* summary */
+  .summary{margin-top:34px;border:1px solid var(--hair);border-radius:10px;padding:22px 24px;
+           display:grid;grid-template-columns:repeat(3,1fr);gap:20px;}
+  .metric .k{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);margin-bottom:6px;}
+  .metric .v{font-size:24px;font-weight:800;letter-spacing:-.01em;font-variant-numeric:tabular-nums;}
+  .metric .v small{font-size:14px;font-weight:600;color:var(--muted);}
+  @media (max-width:560px){ .summary{grid-template-columns:1fr;gap:14px;} h1{font-size:24px;} }
+
+  footer{margin-top:26px;font-size:11.5px;color:var(--faint);font-family:var(--mono);line-height:1.7;}
+</style>
+
+<div class="wrap">
+  <p class="eyebrow">Pseudo-Lab 12기 · LLM On Jetson</p>
+  <h1>Phi-4 경량화 파이프라인</h1>
+  <p class="thesis">14.7B 모델을 손바닥만 한 <b>Jetson Orin Nano 8GB</b>에서 돌리기까지.
+     <b>프루닝</b>이 파라미터 개수를, <b>양자화</b>가 파라미터당 비트를 줄이고,
+     그 사이 <b>CPT·SFT</b>가 크기는 그대로 둔 채 한국어 품질을 끌어올린다.</p>
+
+  <hr class="rule">
+
+  <!-- 0 -->
+  <div class="stage">
+    <div class="idx">00</div>
+    <div class="body">
+      <div class="top"><span class="name">원본 Phi-4</span><span class="detail">14.7B · 40층 · BF16</span></div>
+      <div class="chips"><span class="chip">14.7B params</span><span class="chip">16 bit</span></div>
+      <div class="barrow">
+        <div class="track"><div class="bar" style="width:100%"></div></div>
+        <div class="size">29 GB</div>
+      </div>
+      <div class="kmmlu"><span class="label">KMMLU</span><span class="val">0.356</span><span class="delta">기준</span></div>
+    </div>
+  </div>
+
+  <div class="axis"><b>프루닝</b> — 파라미터 개수 ↓ (14.7B → 9.89B), 층을 통째로 제거</div>
+
+  <!-- 1 -->
+  <div class="stage">
+    <div class="idx">01</div>
+    <div class="body">
+      <div class="top"><span class="name">프루닝 · ShortGPT</span><span class="detail">depth 0.35 · 40층 → 26층</span></div>
+      <div class="chips"><span class="chip">9.89B params</span><span class="chip">16 bit</span><span class="chip">BI 기준 층 제거</span></div>
+      <div class="barrow">
+        <div class="track"><div class="bar" style="width:68.2%"></div></div>
+        <div class="size">19.78 GB</div>
+      </div>
+      <div class="kmmlu"><span class="label">KMMLU</span><span class="val">0.351</span><span class="delta">−0.5%p · 거의 무손실</span></div>
+    </div>
+  </div>
+
+  <div class="axis"><b>CPT · SFT</b> — 크기 유지, 한국어 품질 ↑ (재학습이라 파라미터·비트 불변)</div>
+
+  <!-- 2 -->
+  <div class="stage">
+    <div class="idx">02</div>
+    <div class="body">
+      <div class="top"><span class="name">CPT · 한국어 주입</span><span class="detail">continued pre-training · 110M 토큰</span></div>
+      <div class="chips"><span class="chip">9.89B params</span><span class="chip">16 bit</span><span class="chip">full-FT</span></div>
+      <div class="barrow">
+        <div class="track"><div class="bar" style="width:68.2%"></div></div>
+        <div class="size">19.78 GB</div>
+      </div>
+      <div class="kmmlu"><span class="label">KMMLU</span><span class="val up">0.387</span><span class="delta">+3.1%p · 원본 초월</span></div>
+    </div>
+  </div>
+
+  <!-- 3 -->
+  <div class="stage">
+    <div class="idx">03</div>
+    <div class="body">
+      <div class="top"><span class="name">SFT · 대화 학습</span><span class="detail">supervised fine-tuning · 55.5k 대화</span></div>
+      <div class="chips"><span class="chip">9.89B params</span><span class="chip">16 bit</span><span class="chip">LoRA r64</span></div>
+      <div class="barrow">
+        <div class="track"><div class="bar" style="width:68.2%"></div></div>
+        <div class="size">19.78 GB</div>
+      </div>
+      <div class="kmmlu"><span class="label">KMMLU</span><span class="val up">0.399</span><span class="delta">+4.3%p · 최종 f16</span></div>
+    </div>
+  </div>
+
+  <div class="axis"><b>양자화</b> — 비트/param ↓ (16 bit → 4 bit), 정밀도만 낮춤 · PTQ</div>
+
+  <!-- 4 -->
+  <div class="stage">
+    <div class="idx">04</div>
+    <div class="body">
+      <div class="top"><span class="name">양자화 · GGUF Q3_K_M</span><span class="detail">imatrix 한국어 보정 · 약 4 bit/param</span></div>
+      <div class="chips"><span class="chip">9.89B params</span><span class="chip">4 bit</span><span class="chip">llama.cpp</span></div>
+      <div class="barrow">
+        <div class="track"><div class="bar sub" style="width:17.3%"></div></div>
+        <div class="size">5.02 GB</div>
+      </div>
+      <div class="kmmlu"><span class="label">KMMLU</span><span class="val up">0.377</span><span class="delta">양자화 −2.2%p · 원본보다 +2.1%p</span></div>
+    </div>
+  </div>
+
+  <!-- 5 -->
+  <div class="stage">
+    <div class="idx">05</div>
+    <div class="body">
+      <div class="top"><span class="name">Jetson 배포</span><span class="detail">Orin Nano 8GB · GPU 가속 · 4–7.6 tok/s</span></div>
+      <div class="chips"><span class="chip">phi4-q3.gguf</span><span class="chip">4 bit</span><span class="chip">-ngl 26</span></div>
+      <div class="barrow">
+        <div class="track"><div class="bar sub" style="width:16.1%"></div></div>
+        <div class="size">4.67 GB</div>
+      </div>
+      <div class="kmmlu"><span class="label">KMMLU</span><span class="val up">0.377</span><span class="delta">8GB 엣지에서 한국어 대화 구동</span></div>
+    </div>
+  </div>
+
+  <div class="summary">
+    <div class="metric"><div class="k">모델 크기</div><div class="v">29 → 4.67 <small>GB</small></div></div>
+    <div class="metric"><div class="k">압축비</div><div class="v">약 6.2<small>배</small></div></div>
+    <div class="metric"><div class="k">KMMLU (원본 대비)</div><div class="v">0.356 → 0.377 <small>+2.1%p</small></div></div>
+  </div>
+
+  <footer>
+    측정 조건: KMMLU limit=50 · hf 백엔드 · 동일 하니스 (같은 축끼리만 비교 가능)<br>
+    크기 막대는 파일 크기(GB) 비례. 프루닝·CPT·SFT·양자화 4단계, 두 압축 축(개수·비트)은 독립.
+  </footer>
+</div>

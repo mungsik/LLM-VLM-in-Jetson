@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phi-4 경량화본 · Jetson Orin Nano 8GB</title>
+<style>
+  :root { --bg:#ffffff; --panel:#f4f4f5; --border:#d4d4d8; --txt:#18181b; --muted:#71717a;
+          --user:#e4e4e7; --bot:#fafafa; --accent:#18181b; --ok:#18181b; --bad:#71717a; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo",sans-serif;
+         background:var(--bg); color:var(--txt); font-size:14px;
+         height:100vh; display:flex; flex-direction:column; overflow:hidden; }
+  header { padding:12px 16px; border-bottom:1px solid var(--border); background:var(--panel);
+           flex:0 0 auto; }
+  h1 { font-size:16px; margin:0 0 8px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .dot { width:9px; height:9px; border-radius:50%; background:var(--muted); display:inline-block;
+         border:1px solid var(--border); }
+  .dot.ok { background:var(--ok); }
+  .dot.bad { background:var(--bg); }
+  .controls { display:flex; flex-wrap:wrap; gap:10px 16px; align-items:center; }
+  .ctl { display:flex; align-items:center; gap:6px; }
+  .ctl label { color:var(--muted); font-size:12px; white-space:nowrap; }
+  .ctl input[type=number]{ width:64px; background:var(--bg); color:var(--txt); border:1px solid var(--border);
+           border-radius:6px; padding:4px 6px; }
+  .preset { padding:6px 10px; border-radius:8px; border:1px solid var(--border); cursor:pointer;
+            background:var(--bg); color:var(--txt); font-size:12px; }
+  .preset:hover { background:var(--panel); }
+  .hint { font-size:11.5px; color:var(--muted); margin-top:6px; line-height:1.5; }
+  .wrap { max-width:900px; width:100%; margin:0 auto; display:flex; flex-direction:column; flex:1 1 auto; min-height:0; }
+  .log { flex:1; overflow-y:auto; padding:16px; min-height:0; }
+  .msg { margin:0 0 12px; padding:9px 12px; border-radius:10px; white-space:pre-wrap; line-height:1.6;
+         word-break:break-word; max-width:85%; border:1px solid var(--border); }
+  .msg.user { background:var(--user); margin-left:auto; }
+  .msg.bot { background:var(--bot); }
+  .role { font-size:10.5px; color:var(--muted); margin-bottom:3px; text-transform:uppercase; letter-spacing:.5px; }
+  .meta { font-size:10.5px; color:var(--muted); margin-top:5px; }
+  .composer { display:flex; gap:8px; padding:12px 16px; border-top:1px solid var(--border);
+              background:var(--panel); max-width:900px; margin:0 auto; width:100%; flex:0 0 auto; }
+  .composer textarea { flex:1; resize:none; height:44px; background:var(--bg); color:var(--txt);
+           border:1px solid var(--border); border-radius:8px; padding:10px; font-family:inherit; font-size:14px; }
+  .composer button { padding:0 18px; border-radius:8px; border:1px solid var(--accent); background:var(--accent); color:#fff;
+           font-weight:600; cursor:pointer; }
+  .composer button:disabled{ opacity:.4; cursor:default; }
+  b { color:var(--txt); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Pseudo-Lab 12기 &lt; LLM On Jetson &gt;</h1>
+  <div style="font-size:13px;color:var(--txt);line-height:1.7;margin-bottom:6px">
+    - 경량화 모델 : Phi-4 14B
+  </div>
+  <div style="display:flex;align-items:center;gap:16px">
+    <div style="max-width:520px;flex:1">
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:3px">
+        <span id="ctxlabel">컨텍스트 0 / 4096 토큰</span><span id="ctxpct">0%</span>
+      </div>
+      <div style="height:7px;background:var(--bg);border:1px solid var(--border);border-radius:4px;overflow:hidden">
+        <div id="ctxbar" style="height:100%;width:0%;background:var(--txt);transition:width .3s"></div>
+      </div>
+      <div id="ctxwarn" style="font-size:11px;color:var(--txt);font-weight:600;margin-top:3px;height:14px"></div>
+    </div>
+    <button class="preset" id="reset">대화 초기화</button>
+  </div>
+  <div class="controls" style="display:none">
+    <div class="ctl"><label>temperature</label><input id="temp" type="number" step="0.1" min="0" value="0.3"></div>
+    <div class="ctl"><label>DRY (반복억제)</label><input id="dry" type="number" step="0.1" min="0" value="0.8"></div>
+    <div class="ctl"><label>max tokens</label><input id="maxtok" type="number" step="50" min="16" value="1200"></div>
+  </div>
+  <div class="controls" style="margin-top:8px">
+    <label style="color:var(--muted);font-size:12px;white-space:nowrap">system</label>
+    <input id="sys" type="text" value="당신은 한국어로 답하는 친절한 AI 비서입니다."
+      style="flex:1;min-width:280px;background:var(--bg);color:var(--txt);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:12px">
+    <button class="preset" id="sys-clear">시스템 프롬프트 초기화</button>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="log" id="log"></div>
+</div>
+
+<div class="composer">
+  <textarea id="input" placeholder="메시지 입력 후 Enter (Shift+Enter 줄바꿈)"></textarea>
+  <button id="send">전송</button>
+</div>
+
+<script>
+const URL = "http://100.87.226.68:8005";
+const $ = id => document.getElementById(id);
+let hist = [];
+let N_CTX = 4096;          // 서버 컨텍스트 (props에서 갱신)
+let ctxTokens = 0;         // 현재 점유 토큰
+
+async function loadCtx(){
+  try {
+    const p = await (await fetch(URL+"/props")).json();
+    const n = (p.default_generation_settings||{}).n_ctx;
+    if(n){ N_CTX = n; updateCtx(ctxTokens); }
+  } catch(e){}
+}
+function updateCtx(used){
+  ctxTokens = used;
+  const pct = Math.min(100, Math.round(used / N_CTX * 100));
+  $("ctxlabel").textContent = `컨텍스트 ${used} / ${N_CTX} 토큰`;
+  $("ctxpct").textContent = pct + "%";
+  $("ctxbar").style.width = pct + "%";
+  const w = $("ctxwarn");
+  if(pct >= 90)      w.textContent = "컨텍스트 거의 참 — 초기화 권장 (초반 대화가 밀려 잊힙니다)";
+  else if(pct >= 75) w.textContent = "컨텍스트 75% 초과 — 곧 초기화 권장";
+  else               w.textContent = "";
+}
+
+const getSys = () => $("sys").value.trim();
+function params(){
+  const dry = parseFloat($("dry").value)||0;
+  return {
+    temperature: parseFloat($("temp").value)||0,
+    ...(dry > 0 ? { dry_multiplier: dry, dry_base: 1.75, dry_allowed_length: 2 } : {}),
+  };
+}
+function addMsg(role, cls, text){
+  const log = $("log");
+  const d = document.createElement("div");
+  d.className = "msg " + cls;
+  d.innerHTML = '<div class="role">'+role+'</div>';
+  const body = document.createElement("div"); body.textContent = text;
+  d.appendChild(body);
+  log.appendChild(d); log.scrollTop = log.scrollHeight;
+  return { body, wrap:d };
+}
+async function send(){
+  const t = $("input").value.trim(); if(!t) return;
+  $("input").value = ""; $("send").disabled = true;
+  addMsg("나","user", t);
+  hist.push({role:"user", content:t});
+  const { body, wrap } = addMsg("Jetson 응답 중…","bot","");
+  const t0 = performance.now(); let ntok = 0; let tFirst = null; let lastUsage = null;
+  try {
+    const res = await fetch(URL+"/v1/chat/completions", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({
+        messages: getSys() ? [{role:"system",content:getSys()}, ...hist] : hist,
+        max_tokens: parseInt($("maxtok").value)||400, stream:true,
+        stream_options:{include_usage:true}, ...params()
+      })
+    });
+    if(!res.ok){ body.textContent = "HTTP "+res.status+" — "+(await res.text()).slice(0,200); throw 0; }
+    const reader = res.body.getReader(); const dec = new TextDecoder();
+    let acc = "", buf = "";
+    while(true){
+      const {done, value} = await reader.read(); if(done) break;
+      buf += dec.decode(value, {stream:true});
+      let idx;
+      while((idx = buf.indexOf("\n")) >= 0){
+        const line = buf.slice(0, idx).trim(); buf = buf.slice(idx+1);
+        if(!line.startsWith("data:")) continue;
+        const data = line.slice(5).trim();
+        if(data === "[DONE]") continue;
+        try {
+          const j = JSON.parse(data);
+          if(j.usage) lastUsage = j.usage;
+          const delta = j.choices?.[0]?.delta?.content || "";
+          if(delta){
+            if(tFirst === null) tFirst = performance.now();
+            acc += delta; ntok++; body.textContent = acc; $("log").scrollTop = $("log").scrollHeight;
+          }
+        } catch(e){}
+      }
+    }
+    wrap.querySelector(".role").textContent = "Jetson 경량화본";
+    const secs = (performance.now()-t0)/1000;
+    const ttft = tFirst ? (tFirst-t0)/1000 : 0;
+    const tps = secs > 0 ? (ntok/secs) : 0;
+    const meta = document.createElement("div"); meta.className = "meta";
+    meta.textContent = `응답 ${secs.toFixed(1)}초 · 첫 토큰 ${ttft.toFixed(2)}초 · ${ntok} 토큰 · ${tps.toFixed(1)} tok/s`;
+    wrap.appendChild(meta);
+    hist.push({role:"assistant", content:acc});
+    // 컨텍스트 점유 갱신 (서버 실측 usage; 없으면 대략 추정)
+    if(lastUsage && lastUsage.prompt_tokens != null)
+      updateCtx(lastUsage.prompt_tokens + (lastUsage.completion_tokens||ntok));
+    else
+      updateCtx(ctxTokens + Math.round(acc.length/1.8) + Math.round(t.length/1.8));
+  } catch(e){
+    if(!body.textContent) body.textContent = "연결 실패 — jetson01:8005 확인";
+  }
+  $("send").disabled = false; $("input").focus();
+}
+function resetChat(){ hist = []; $("log").innerHTML = ""; updateCtx(0); }
+$("send").onclick = send;
+$("input").addEventListener("keydown", e => {
+  if(e.isComposing || e.keyCode===229) return;
+  if(e.key==="Enter" && !e.shiftKey){ e.preventDefault(); send(); }
+});
+$("reset").onclick = resetChat;
+$("sys-clear").onclick = () => { $("sys").value = ""; };
+loadCtx();
+</script>
+</body>
+</html>
